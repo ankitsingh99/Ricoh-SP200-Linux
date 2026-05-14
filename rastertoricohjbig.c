@@ -48,6 +48,8 @@ static void write_job_header(int copies)
      * Without the bare @PJL\r\n the printer silently discards the job. */
     fputs("\x1b%-12345X@PJL\r\n", stdout);
 
+    /* PAGESTATUS=START here covers page 1; subsequent pages get their own
+     * PAGESTATUS=START emitted by write_page before their data. */
     fprintf(stdout,
         "@PJL SET TIMESTAMP=%04d/%02d/%02d %02d:%02d:%02d\r\n"
         "@PJL SET FILENAME=printjob\r\n"
@@ -75,34 +77,71 @@ static unsigned long count_dots(const unsigned char* bmp, unsigned w, unsigned h
     return n;
 }
 
-static unsigned long write_page(unsigned char* bmp, unsigned w, unsigned h,
-    const char* paper, int first_page, unsigned dpi)
+/*
+ * Encode and send one page. Protocol (from USB capture of Windows driver):
+ *
+ *   For page 1:  job header already emitted PAGESTATUS=START + COPIES + MEDIA.
+ *   For page N>1: we emit PAGESTATUS=END (closes page N-1) then the full
+ *                 per-page setup block before this page's IMAGELEN.
+ *
+ *   After every page's JBIG data: DOTCOUNT + PAGESTATUS=END.
+ *   After the final page: caller emits EOJ + UEL.
+ *
+ *   Without the per-page PAGESTATUS=END the firmware treats every subsequent
+ *   IMAGELEN as another chunk of the same page and never ejects it.
+ */
+static void write_page(unsigned char* bmp, unsigned w, unsigned h,
+    const char* paper, int first_page,
+    unsigned dpi, int copies)
 {
     Buf buf = { malloc(1 << 17), 0, 1 << 17 };
     struct jbg_enc_state enc;
     unsigned char* planes[1] = { bmp };
 
-    if (first_page) {
+    /* Pages 2+ need their own PAGESTATUS=START + media header.
+     * Page 1 inherits these from the job header. */
+    if (!first_page) {
         fprintf(stdout,
-            "@PJL SET PAPER=%s\r\n"
-            "@PJL SET PAPERWIDTH=%u\r\n"
-            "@PJL SET PAPERLENGTH=%u\r\n"
-            "@PJL SET RESOLUTION=%u\r\n",
-            paper, w, h, dpi);
+            "@PJL SET PAGESTATUS=START\r\n"
+            "@PJL SET COPIES=%d\r\n"
+            "@PJL SET MEDIASOURCE=TRAY1\r\n"
+            "@PJL SET MEDIATYPE=PLAINRECYCLE\r\n",
+            copies);
     }
 
+    /* PAPERWIDTH and PAPERLENGTH are both required and are repeated for every
+     * page (not just the first). Omitting PAPERLENGTH causes the printer to
+     * initialise but never feed the page. */
+    fprintf(stdout,
+        "@PJL SET PAPER=%s\r\n"
+        "@PJL SET PAPERWIDTH=%u\r\n"
+        "@PJL SET PAPERLENGTH=%u\r\n"
+        "@PJL SET RESOLUTION=%u\r\n",
+        paper, w, h, dpi);
+
     jbg_enc_init(&enc, w, h, 1, planes, buf_cb, &buf);
+    /* jbigkit 2.1 stores the order and options arguments directly into BIE
+     * bytes 18 and 19. Both must match the Windows driver's output exactly:
+     * byte 18 = 0x03, byte 19 = 0x48. Sending byte 19 = 0x08 causes the
+     * printer to warm up but refuse to pull the page. */
     jbg_enc_options(&enc, 0x03, 0x48, 128, 0, 0);
     jbg_enc_out(&enc);
     jbg_enc_free(&enc);
 
     fprintf(stdout, "@PJL SET IMAGELEN=%zu\r\n", buf.size);
     fwrite(buf.data, 1, buf.size, stdout);
+
+    /* DOTCOUNT + PAGESTATUS=END must follow every page's JBIG data.
+     * This triggers paper ejection. Without it the printer accumulates all
+     * subsequent IMAGELEN blocks as extra chunks of the same page. */
+    unsigned long dots = count_dots(bmp, w, h);
+    fprintf(stdout,
+        "@PJL SET DOTCOUNT=%lu\r\n"
+        "@PJL SET PAGESTATUS=END\r\n",
+        dots);
     fflush(stdout);
 
-    unsigned long dots = count_dots(bmp, w, h);
     free(buf.data);
-    return dots;
 }
 
 int main(int argc, char* argv[])
@@ -113,7 +152,6 @@ int main(int argc, char* argv[])
     cups_raster_t* ras = cupsRasterOpen(0, CUPS_RASTER_READ);
     cups_page_header2_t hdr;
     int                 page = 0;
-    unsigned long       total_dots = 0;
 
     write_job_header(copies);
 
@@ -123,7 +161,9 @@ int main(int argc, char* argv[])
         unsigned bpp = hdr.cupsBitsPerPixel;
         unsigned cspace = hdr.cupsColorSpace;
         unsigned dpi = hdr.HWResolution[0];
-        unsigned stride = (bpp * w + 7) / 8;
+        /* Use cupsBytesPerLine — not a manual calculation — so that the stream
+         * position stays correct across pages regardless of row padding. */
+        unsigned stride = hdr.cupsBytesPerLine;
 
         const char* paper = (hdr.PageSize[0] > 610) ? "LETTER" : "A4";
 
@@ -165,7 +205,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        total_dots += write_page(bmp1, w, h, paper, page == 0, dpi);
+        write_page(bmp1, w, h, paper, page == 0, dpi, copies);
         if (bpp > 1) free(bmp1);
         free(bmp);
 
@@ -175,12 +215,7 @@ int main(int argc, char* argv[])
 
     cupsRasterClose(ras);
 
-    fprintf(stdout,
-        "@PJL SET DOTCOUNT=%lu\r\n"
-        "@PJL SET PAGESTATUS=END\r\n"
-        "@PJL EOJ\r\n"
-        "\x1b%%-12345X\r\n",
-        total_dots);
+    fputs("@PJL EOJ\r\n\x1b%-12345X\r\n", stdout);
     fflush(stdout);
 
     return 0;
