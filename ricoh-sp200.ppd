@@ -1,0 +1,44 @@
+*PPD-Adobe: "4.3"
+*FormatVersion: "4.3"
+*FileVersion: "1.0"
+*LanguageVersion: English
+*PCFileName: "RICSP200.PPD"
+*Manufacturer: "Ricoh"
+*ModelName: "Ricoh SP 200"
+*ShortNickName: "Ricoh SP 200"
+*NickName: "Ricoh SP 200 DDST"
+*PSVersion: "(3010.000) 550"
+*LanguageLevel: "3"
+*ColorDevice: False
+*DefaultColorSpace: Gray
+*Throughput: "22"
+*cupsVersion: 2.0
+*cupsFilter: "application/vnd.cups-raster 0 rastertoricohjbig"
+*cupsSNMPSupplies: False
+
+*OpenUI *PageSize/Paper Size: PickOne
+*DefaultPageSize: A4
+*PageSize A4/A4:         "<</PageSize[595.28 841.89]>>setpagedevice"
+*PageSize Letter/Letter: "<</PageSize[612 792]>>setpagedevice"
+*CloseUI: *PageSize
+
+*OpenUI *PageRegion: PickOne
+*DefaultPageRegion: A4
+*PageRegion A4/A4:         "<</PageSize[595.28 841.89]>>setpagedevice"
+*PageRegion Letter/Letter: "<</PageSize[612 792]>>setpagedevice"
+*CloseUI: *PageRegion
+
+*DefaultImageableArea: A4
+*ImageableArea A4/A4:         "9 9 586 833"
+*ImageableArea Letter/Letter: "9 9 603 783"
+
+*DefaultPaperDimension: A4
+*PaperDimension A4/A4:         "595.28 841.89"
+*PaperDimension Letter/Letter: "612 792"
+
+*OpenUI *Resolution/Resolution: PickOne
+*DefaultResolution: 600dpi
+*Resolution 600dpi/600 DPI: "<</HWResolution[600 600]>>setpagedevice"
+*CloseUI: *Resolution
+
+*DefaultOutputOrder: Normal
