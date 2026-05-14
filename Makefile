@@ -8,7 +8,7 @@ PPD     = ricoh-sp200.ppd
 
 FILTER_DIR = /usr/lib/cups/filter
 PPD_DIR    = /usr/share/ppd/cupsfilters
-PRINTER    = RicohSP200
+PRINTER    = Ricoh_SP_200_DDST
 
 .PHONY: all build install uninstall register clean
 

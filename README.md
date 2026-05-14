@@ -46,7 +46,7 @@ sudo make install
 sudo make register
 
 # Test print
-echo "Hello from Linux" | lpr -P RicohSP200
+echo "Hello from Linux" | lpr -P Ricoh_SP_200_DDST
 
 # To remove everything
 sudo make uninstall
@@ -66,13 +66,13 @@ sudo install -m 755 rastertoricohjbig /usr/lib/cups/filter/rastertoricohjbig
 sudo install -m 644 ricoh-sp200.ppd /usr/share/ppd/cupsfilters/
 
 # Register printer with CUPS (printer must be plugged in via USB)
-sudo lpadmin -p RicohSP200 \
+sudo lpadmin -p Ricoh_SP_200_DDST \
     -v "$(lpinfo -v | grep -i ricoh | awk '{print $2}' | head -1)" \
     -P /usr/share/ppd/cupsfilters/ricoh-sp200.ppd \
     -E
 
 # Test print
-echo "Hello from Linux" | lpr -P RicohSP200
+echo "Hello from Linux" | lpr -P Ricoh_SP_200_DDST
 ```
 
 ---
@@ -236,8 +236,8 @@ sudo chown root:root /usr/lib/cups/filter/rastertoricohjbig
 
 **CUPS shows printer stopped**
 ```bash
-sudo cupsenable RicohSP200
-sudo cupsaccept RicohSP200
+sudo cupsenable Ricoh_SP_200_DDST
+sudo cupsaccept Ricoh_SP_200_DDST
 ```
 
 **Check CUPS error log**
