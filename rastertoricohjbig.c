@@ -6,7 +6,7 @@
  *
  * Build:
  *   gcc -O2 -o rastertoricohjbig rastertoricohjbig.c \
- *       $(cups-config --cflags --libs) -lcupsimage -ljbig
+ *       $(cups-config --libs) -lcupsimage -ljbig
  *
  * Install:
  *   sudo cp rastertoricohjbig /usr/lib/cups/filter/
@@ -21,14 +21,7 @@
 #include <cups/cups.h>
 #include <cups/raster.h>
 
- /* JBIG encoding parameters — derived from BIE header in USB capture */
-#define JBIG_L0       128           /* lines per stripe                  */
-#define JBIG_ORDER    (JBG_HITOLO | JBG_SEQ)   /* 0x03                  */
-#define JBIG_OPTIONS  (JBG_TPDON | JBG_DPPRIV)  // 0x48 (matches Windows capture exactly)
-
-/* ------------------------------------------------------------------ */
-/* Growable output buffer for jbg_enc_out callback                    */
-/* ------------------------------------------------------------------ */
+ /* Growable output buffer used as the jbg_enc_out callback target */
 typedef struct {
     unsigned char* data;
     size_t         size;
@@ -46,15 +39,13 @@ static void buf_cb(unsigned char* d, size_t n, void* arg)
     b->size += n;
 }
 
-/* ------------------------------------------------------------------ */
-/* Write the PJL job header to stdout                                  */
-/* ------------------------------------------------------------------ */
 static void write_job_header(int copies)
 {
     time_t     now = time(NULL);
     struct tm* t = localtime(&now);
 
-    /* PJL Universal Exit Language escape, followed by bare @PJL marker */
+    /* UEL followed by a bare @PJL line — required by the firmware parser.
+     * Without the bare @PJL\r\n the printer silently discards the job. */
     fputs("\x1b%-12345X@PJL\r\n", stdout);
 
     fprintf(stdout,
@@ -73,10 +64,7 @@ static void write_job_header(int copies)
         copies);
 }
 
-/* ------------------------------------------------------------------ */
-/* Encode one raster page as a JBIG1 BIE and write to stdout          */
-/* ------------------------------------------------------------------ */
-/* Count set bits (black pixels) in a 1-bit packed bitmap */
+/* Count black pixels across a 1-bit packed bitmap (for DOTCOUNT). */
 static unsigned long count_dots(const unsigned char* bmp, unsigned w, unsigned h)
 {
     unsigned stride = (w + 7) / 8;
@@ -103,108 +91,60 @@ static unsigned long write_page(unsigned char* bmp, unsigned w, unsigned h,
             paper, w, h, dpi);
     }
 
-    /* JBIG1 encode */
     jbg_enc_init(&enc, w, h, 1, planes, buf_cb, &buf);
-    /* options=0x48 = JBG_LRLTWO(0x40) | JBG_TPBON(0x08) in jbigkit 2.1 constants.
-     * jbigkit stores this value directly into BIE byte 19, which must match
-     * the Windows driver's output exactly (also 0x48). Using 0x08 here caused
-     * all-black output because the encoder used the 3-pixel template but the
-     * header declared the 2-pixel template (LRLTWO), confusing the printer's
-     * decoder.                                                                */
-    jbg_enc_options(&enc,
-        0x03,   /* order:   stored directly as BIE byte 18 */
-        0x48,   /* options: JBG_LRLTWO|JBG_TPBON — matches Windows BIE byte 19 */
-        128,    /* L0:      lines per stripe */
-        0,      /* mx */
-        0);     /* my */
+    jbg_enc_options(&enc, 0x03, 0x48, 128, 0, 0);
     jbg_enc_out(&enc);
     jbg_enc_free(&enc);
 
-    if (buf.size >= 20)
-        fprintf(stderr, "DEBUG: BIE byte18=0x%02x byte19=0x%02x\n",
-                buf.data[18], buf.data[19]);
-
-    unsigned long dots = count_dots(bmp, w, h);
-
-    /* Write IMAGELEN declaration then the BIE */
     fprintf(stdout, "@PJL SET IMAGELEN=%zu\r\n", buf.size);
     fwrite(buf.data, 1, buf.size, stdout);
     fflush(stdout);
 
+    unsigned long dots = count_dots(bmp, w, h);
     free(buf.data);
     return dots;
 }
 
-/* ------------------------------------------------------------------ */
-/* main                                                                */
-/* ------------------------------------------------------------------ */
 int main(int argc, char* argv[])
 {
-    FILE* dbg = fopen("/tmp/ricoh_filter_debug.log", "w");
-    if (dbg) {
-        fprintf(dbg, "Filter invoked! argc=%d\n", argc);
-        for (int i = 0; i < argc; i++)
-            fprintf(dbg, "  argv[%d]=%s\n", i, argv[i]);
-        fflush(dbg);
-    }
-
-    /* CUPS filter argv: job-id user title copies options [filename] */
     int copies = (argc > 4) ? atoi(argv[4]) : 1;
     if (copies < 1) copies = 1;
 
     cups_raster_t* ras = cupsRasterOpen(0, CUPS_RASTER_READ);
     cups_page_header2_t hdr;
-    int page = 0;
-    unsigned long total_dots = 0;
+    int                 page = 0;
+    unsigned long       total_dots = 0;
 
     write_job_header(copies);
 
     while (cupsRasterReadHeader2(ras, &hdr)) {
-        unsigned w      = hdr.cupsWidth;
-        unsigned h      = hdr.cupsHeight;
-        unsigned bpc    = hdr.cupsBitsPerColor;
-        unsigned bpp    = hdr.cupsBitsPerPixel;
+        unsigned w = hdr.cupsWidth;
+        unsigned h = hdr.cupsHeight;
+        unsigned bpp = hdr.cupsBitsPerPixel;
         unsigned cspace = hdr.cupsColorSpace;
-        unsigned dpi    = hdr.HWResolution[0];
-
-        /* Log the raster header so we know exactly what CUPS sent */
-        if (dbg) {
-            fprintf(dbg, "\n--- page %d ---\n", page + 1);
-            fprintf(dbg, "  Width=%u  Height=%u  DPI=%u\n", w, h, dpi);
-            fprintf(dbg, "  ColorSpace=%u  BitsPerColor=%u  BitsPerPixel=%u\n",
-                    cspace, bpc, bpp);
-            fprintf(dbg, "  PageSize=[%u %u]  NumColors=%u\n",
-                    hdr.PageSize[0], hdr.PageSize[1], hdr.cupsNumColors);
-            fflush(dbg);
-        }
-
-        /* stride depends on what CUPS actually delivers */
+        unsigned dpi = hdr.HWResolution[0];
         unsigned stride = (bpp * w + 7) / 8;
 
-        /* Determine paper name */
-        const char* paper = "A4";
-        if (hdr.PageSize[0] > 610) paper = "LETTER";
+        const char* paper = (hdr.PageSize[0] > 610) ? "LETTER" : "A4";
 
-        /* Read full raster page */
         unsigned char* bmp = malloc(stride * h);
         if (!bmp) {
             fputs("rastertoricohjbig: out of memory\n", stderr);
-            if (dbg) { fprintf(dbg, "ERROR: out of memory\n"); fclose(dbg); }
             return 1;
         }
         for (unsigned y = 0; y < h; y++)
             cupsRasterReadPixels(ras, bmp + y * stride, stride);
 
-        /* If CUPS delivered multi-bit gray instead of 1-bit, convert it.
-         * threshold: pixel >= 128 → white (0), < 128 → black (1) */
+        /* The PPD requests 1-bit K raster, so bpp == 1 in normal operation.
+         * This fallback converts 8-bit gray or 24-bit RGB if a different CUPS
+         * pipeline delivers it. */
         unsigned char* bmp1 = bmp;
         if (bpp > 1) {
             unsigned stride1 = (w + 7) / 8;
             bmp1 = calloc(stride1, h);
             if (!bmp1) {
-                fputs("rastertoricohjbig: out of memory (1-bit buf)\n", stderr);
+                fputs("rastertoricohjbig: out of memory\n", stderr);
                 free(bmp);
-                if (dbg) { fprintf(dbg, "ERROR: out of memory (1-bit)\n"); fclose(dbg); }
                 return 1;
             }
             for (unsigned y = 0; y < h; y++) {
@@ -212,22 +152,17 @@ int main(int argc, char* argv[])
                     unsigned char px;
                     if (bpp == 8)
                         px = bmp[y * stride + x];
-                    else  /* 24-bit RGB: average */
-                        px = ((unsigned)bmp[y*stride + x*3] +
-                              bmp[y*stride + x*3+1] +
-                              bmp[y*stride + x*3+2]) / 3;
-                    /* K=0 means white in CUPS_CSPACE_K; invert for W spaces */
+                    else  /* 24-bit RGB → luminance average */
+                        px = ((unsigned)bmp[y * stride + x * 3] +
+                            bmp[y * stride + x * 3 + 1] +
+                            bmp[y * stride + x * 3 + 2]) / 3;
+                    /* CUPS_CSPACE_K (3): 0 = white, 1 = black.
+                     * All other spaces: 0 = black, 255 = white. */
                     int black = (cspace == 3) ? (px > 128) : (px < 128);
                     if (black)
-                        bmp1[y * stride1 + x/8] |= (0x80 >> (x & 7));
+                        bmp1[y * stride1 + x / 8] |= (0x80 >> (x & 7));
                 }
             }
-            if (dbg) {
-                fprintf(dbg, "  converted %u-bit → 1-bit (stride %u→%u)\n",
-                        bpp, stride, (w+7)/8);
-                fflush(dbg);
-            }
-            stride = (w + 7) / 8;
         }
 
         total_dots += write_page(bmp1, w, h, paper, page == 0, dpi);
@@ -236,21 +171,10 @@ int main(int argc, char* argv[])
 
         page++;
         fprintf(stderr, "PAGE: %d %d\n", page, copies);
-        if (dbg) { fprintf(dbg, "  page %d encoded and sent\n", page); fflush(dbg); }
     }
 
     cupsRasterClose(ras);
 
-    if (dbg) {
-        fprintf(dbg, "\nDone. Total pages=%d  total_dots=%lu\n", page, total_dots);
-        fclose(dbg);
-    }
-
-    /* End-of-job sequence — must match Windows driver exactly:
-     *   DOTCOUNT  = total black pixels across all pages
-     *   PAGESTATUS=END triggers page ejection in the firmware
-     *   EOJ       = standard PJL end-of-job
-     *   UEL       = universal exit language (with trailing CRLF as in capture) */
     fprintf(stdout,
         "@PJL SET DOTCOUNT=%lu\r\n"
         "@PJL SET PAGESTATUS=END\r\n"
