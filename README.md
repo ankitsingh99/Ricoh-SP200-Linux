@@ -36,18 +36,36 @@ sudo dnf install cups-devel cups-libs jbigkit-devel jbigkit-libs gcc ghostscript
 
 ## Build and Install
 
+### Using make (recommended)
+
+```bash
+# Build and install the filter + PPD
+sudo make install
+
+# Register the printer with CUPS (printer must be plugged in via USB)
+sudo make register
+
+# Test print
+echo "Hello from Linux" | lpr -P RicohSP200
+
+# To remove everything
+sudo make uninstall
+```
+
+### Manual steps
+
 ```bash
 # Compile
- gcc -O2 -Wall -Wextra -o rastertoricohjbig rastertoricohjbig.c $(cups-config --libs) -lcupsimage -ljbig
+gcc -O2 -Wall -Wextra -o rastertoricohjbig rastertoricohjbig.c \
+    $(cups-config --libs) -lcupsimage -ljbig
 
 # Install filter
-sudo cp rastertoricohjbig /usr/lib/cups/filter/
-sudo chmod 755 /usr/lib/cups/filter/rastertoricohjbig
+sudo install -m 755 rastertoricohjbig /usr/lib/cups/filter/rastertoricohjbig
 
 # Install PPD
-sudo cp ricoh-sp200.ppd /usr/share/ppd/cupsfilters/
+sudo install -m 644 ricoh-sp200.ppd /usr/share/ppd/cupsfilters/
 
-# Register printer with CUPS
+# Register printer with CUPS (printer must be plugged in via USB)
 sudo lpadmin -p RicohSP200 \
     -v "$(lpinfo -v | grep -i ricoh | awk '{print $2}' | head -1)" \
     -P /usr/share/ppd/cupsfilters/ricoh-sp200.ppd \
