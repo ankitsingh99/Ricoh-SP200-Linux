@@ -2,15 +2,6 @@
  * rastertoricohjbig.c — CUPS raster filter for Ricoh SP 200
  *
  * Converts CUPS raster input to the Ricoh SP 200 PJL+JBIG1 protocol.
- * Protocol reverse engineered from USB captures of the Windows driver.
- *
- * Build:
- *   gcc -O2 -o rastertoricohjbig rastertoricohjbig.c \
- *       $(cups-config --libs) -lcupsimage -ljbig
- *
- * Install:
- *   sudo cp rastertoricohjbig /usr/lib/cups/filter/
- *   sudo chmod 755 /usr/lib/cups/filter/rastertoricohjbig
  */
 
 #include <stdio.h>
@@ -44,12 +35,8 @@ static void write_job_header(int copies)
     time_t     now = time(NULL);
     struct tm* t = localtime(&now);
 
-    /* UEL followed by a bare @PJL line — required by the firmware parser.
-     * Without the bare @PJL\r\n the printer silently discards the job. */
     fputs("\x1b%-12345X@PJL\r\n", stdout);
 
-    /* PAGESTATUS=START here covers page 1; subsequent pages get their own
-     * PAGESTATUS=START emitted by write_page before their data. */
     fprintf(stdout,
         "@PJL SET TIMESTAMP=%04d/%02d/%02d %02d:%02d:%02d\r\n"
         "@PJL SET FILENAME=printjob\r\n"
