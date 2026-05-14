@@ -1,14 +1,26 @@
-CC      = gcc
-CFLAGS  = -O2 -Wall -Wextra
-LIBS    = $(shell cups-config --libs) -lcupsimage -ljbig
+CC     = gcc
+CFLAGS = -O2 -Wall -Wextra
 
 FILTER  = rastertoricohjbig
 SRC     = rastertoricohjbig.c
 PPD     = ricoh-sp200.ppd
+PRINTER = Ricoh_SP_200_DDST
 
-FILTER_DIR = /usr/lib/cups/filter
-PPD_DIR    = /usr/share/ppd/cupsfilters
-PRINTER    = Ricoh_SP_200_DDST
+UNAME := $(shell uname)
+
+ifeq ($(UNAME), Darwin)
+    # macOS: system CUPS filter dir is SIP-protected; requires Homebrew CUPS.
+    # Install deps first: brew install cups jbigkit
+    BREW_PREFIX := $(shell brew --prefix 2>/dev/null || echo /usr/local)
+    FILTER_DIR   = $(BREW_PREFIX)/libexec/cups/filter
+    PPD_DIR      = /Library/Printers/PPDs/Contents/Resources
+    CFLAGS      += -I$(BREW_PREFIX)/include
+    LIBS         = -L$(BREW_PREFIX)/lib -lcups -lcupsimage -ljbig
+else
+    FILTER_DIR = /usr/lib/cups/filter
+    PPD_DIR    = /usr/share/ppd/cupsfilters
+    LIBS       = $(shell cups-config --libs) -lcupsimage -ljbig
+endif
 
 .PHONY: all build install uninstall register clean
 

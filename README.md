@@ -32,6 +32,17 @@ sudo apt install libcups2-dev libcupsimage2-dev libjbig-dev jbigkit-bin gcc ghos
 sudo dnf install cups-devel cups-libs jbigkit-devel jbigkit-libs gcc ghostscript
 ```
 
+**macOS**
+```bash
+brew install cups jbigkit
+brew services start cups   # run Homebrew CUPS on port 631
+```
+
+> **Note:** macOS System Integrity Protection (SIP) makes the system CUPS filter
+> directory (`/usr/libexec/cups/filter/`) read-only even for root. Homebrew CUPS
+> installs its own writable filter directory under `$(brew --prefix)/libexec/cups/filter/`
+> and runs a full CUPS daemon that replaces the system one on port 631.
+
 ---
 
 ## Build and Install
@@ -52,20 +63,18 @@ echo "Hello from Linux" | lpr -P Ricoh_SP_200_DDST
 sudo make uninstall
 ```
 
-### Manual steps
+### Manual steps — Linux
 
 ```bash
 # Compile
-gcc -O2 -Wall -Wextra -o rastertoricohjbig rastertoricohjbig.c \
+gcc -O2 -o rastertoricohjbig rastertoricohjbig.c \
     $(cups-config --libs) -lcupsimage -ljbig
 
-# Install filter
+# Install filter and PPD
 sudo install -m 755 rastertoricohjbig /usr/lib/cups/filter/rastertoricohjbig
+sudo install -m 644 ricoh-sp200.ppd   /usr/share/ppd/cupsfilters/
 
-# Install PPD
-sudo install -m 644 ricoh-sp200.ppd /usr/share/ppd/cupsfilters/
-
-# Register printer with CUPS (printer must be plugged in via USB)
+# Register printer (printer must be plugged in via USB)
 sudo lpadmin -p Ricoh_SP_200_DDST \
     -v "$(lpinfo -v | grep -i ricoh | awk '{print $2}' | head -1)" \
     -P /usr/share/ppd/cupsfilters/ricoh-sp200.ppd \
@@ -73,6 +82,29 @@ sudo lpadmin -p Ricoh_SP_200_DDST \
 
 # Test print
 echo "Hello from Linux" | lpr -P Ricoh_SP_200_DDST
+```
+
+### Manual steps — macOS
+
+```bash
+BREW=$(brew --prefix)
+
+# Compile (Homebrew provides cups and jbigkit headers/libs)
+gcc -O2 -I$BREW/include -o rastertoricohjbig rastertoricohjbig.c \
+    -L$BREW/lib -lcups -lcupsimage -ljbig
+
+# Install filter and PPD
+sudo install -m 755 rastertoricohjbig $BREW/libexec/cups/filter/rastertoricohjbig
+sudo install -m 644 ricoh-sp200.ppd   /Library/Printers/PPDs/Contents/Resources/
+
+# Register printer (printer must be plugged in via USB)
+sudo lpadmin -p Ricoh_SP_200_DDST \
+    -v "$(lpinfo -v | grep -i ricoh | awk '{print $2}' | head -1)" \
+    -P /Library/Printers/PPDs/Contents/Resources/ricoh-sp200.ppd \
+    -E
+
+# Test print
+echo "Hello from macOS" | lpr -P Ricoh_SP_200_DDST
 ```
 
 ---
@@ -250,6 +282,14 @@ sudo tail -40 /var/log/cups/error_log
 # Arch:   sudo pacman -S jbigkit
 # Debian: sudo apt install libjbig-dev
 # Fedora: sudo dnf install jbigkit-devel
+# macOS:  brew install jbigkit
+```
+
+**macOS: filter installs but printer not found by CUPS**
+```bash
+# Ensure Homebrew CUPS is running (not the system daemon)
+brew services restart cups
+lpinfo -v | grep -i ricoh
 ```
 
 ---
