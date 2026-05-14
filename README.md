@@ -88,7 +88,7 @@ The printer was passed through to a Windows VM via USB. On the Linux host, `usbm
 usb.transfer_type == 0x03 && usb.endpoint_address.direction == OUT
 ```
 
-The capture revealed two large `URB_BULK out` packets (~65 KB and ~59 KB) — the complete print job.
+A single-page job produced two `URB_BULK out` packets (~65 KB and ~59 KB). A two-page job produced three packets, revealing that the Windows driver chunks the JBIG stream across as many USB bulk transfers as needed (each ≤ 65 508 bytes).
 
 ### 2. Identifying the Protocol
 
@@ -117,21 +117,44 @@ The 20 bytes following the PJL header were initially assumed to be a proprietary
 | 18 | `03` | order | stored directly in BIE byte 18 |
 | 19 | `48` | options | stored directly in BIE byte 19 |
 
-### 4. Discovering the Inter-Page Protocol
+### 4. Discovering the Multi-Page Protocol
 
-The second USB packet contained a mid-stream `@PJL` command embedded in the binary:
+A second capture was made printing a two-page document. Extracting all `@PJL` tokens from the concatenated USB stream revealed the complete page lifecycle:
 
 ```
-<464 bytes: continuation of page 1 JBIG stream>
-@PJL SET IMAGELEN=59114\r\n
-<59114 bytes: page 2 JBIG BIE + data>
+[page 1 JBIG data — first chunk]
+@PJL SET IMAGELEN=13451          ← second chunk of page 1 (driver splits large pages)
+[13451 bytes — continuation of page 1 JBIG stream]
+@PJL SET DOTCOUNT=1477935        ← black pixel count for page 1
+@PJL SET PAGESTATUS=END          ← eject page 1
+@PJL SET PAGESTATUS=START        ← begin page 2
+@PJL SET COPIES=1
+@PJL SET MEDIASOURCE=TRAY1
+@PJL SET MEDIATYPE=PLAINRECYCLE
+@PJL SET PAPER=A4                ← page 2 media settings (repeated every page)
+@PJL SET PAPERWIDTH=4961
+@PJL SET PAPERLENGTH=7016
+@PJL SET RESOLUTION=600
+@PJL SET IMAGELEN=65556          ← page 2 first chunk
+[65556 bytes — page 2 JBIG data, first chunk]
+@PJL SET IMAGELEN=10550          ← page 2 second chunk
+[10550 bytes — page 2 JBIG continuation]
+@PJL SET DOTCOUNT=1266291
+@PJL SET PAGESTATUS=END          ← eject page 2
+@PJL EOJ
+ESC%-12345X
 ```
 
-The firmware scans the binary stream for `@PJL` tokens. After consuming exactly `IMAGELEN` bytes for a page, it expects the next `@PJL SET IMAGELEN=N` command for the following page — no UEL separator between pages.
+Key findings:
+- **`PAGESTATUS=END` is the page eject trigger.** Without it the firmware treats every subsequent `IMAGELEN` as another chunk of the still-open page and never ejects.
+- **Each page may span multiple `IMAGELEN` chunks.** The driver splits any JBIG stream that exceeds a USB bulk transfer into consecutive `@PJL SET IMAGELEN` blocks, all belonging to the same page. The Linux filter produces smaller JBIG streams (no chunking needed) but the firmware handles both.
+- **Every page except the first gets its own `PAGESTATUS=START` + full media header** (`COPIES`, `MEDIASOURCE`, `MEDIATYPE`, `PAPER`, `PAPERWIDTH`, `PAPERLENGTH`, `RESOLUTION`) before its first `IMAGELEN`.
+- **`DOTCOUNT`** reports the total black pixels for the page and is used by the printer for toner life estimation.
 
 ### 5. Complete Protocol Structure
 
 ```
+── Job header (once) ──────────────────────────────────────────────────────────
 ESC%-12345X@PJL\r\n
 @PJL SET TIMESTAMP=YYYY/MM/DD HH:MM:SS\r\n
 @PJL SET FILENAME=...\r\n
@@ -139,19 +162,28 @@ ESC%-12345X@PJL\r\n
 @PJL SET USERNAME=...\r\n
 @PJL SET COVER=OFF\r\n
 @PJL SET HOLD=OFF\r\n
-@PJL SET PAGESTATUS=START\r\n
+@PJL SET PAGESTATUS=START\r\n      ← covers page 1
 @PJL SET COPIES=N\r\n
 @PJL SET MEDIASOURCE=TRAY1\r\n
 @PJL SET MEDIATYPE=PLAINRECYCLE\r\n
-@PJL SET PAPER=A4\r\n
-@PJL SET PAPERWIDTH=<px>\r\n
-@PJL SET PAPERLENGTH=<px>\r\n
-@PJL SET RESOLUTION=600\r\n
-  [repeat per page:]
+
+── Per-page block (repeat for every page) ─────────────────────────────────────
+  [pages 2+ only:]
+  @PJL SET PAGESTATUS=START\r\n
+  @PJL SET COPIES=N\r\n
+  @PJL SET MEDIASOURCE=TRAY1\r\n
+  @PJL SET MEDIATYPE=PLAINRECYCLE\r\n
+
+  @PJL SET PAPER=<A4|LETTER>\r\n
+  @PJL SET PAPERWIDTH=<px>\r\n
+  @PJL SET PAPERLENGTH=<px>\r\n
+  @PJL SET RESOLUTION=600\r\n
   @PJL SET IMAGELEN=<N>\r\n
   <N bytes: JBIG1 BIE header + compressed raster>
-@PJL SET DOTCOUNT=<total_black_pixels>\r\n
-@PJL SET PAGESTATUS=END\r\n
+  @PJL SET DOTCOUNT=<page_black_pixels>\r\n
+  @PJL SET PAGESTATUS=END\r\n      ← triggers paper ejection
+
+── End of job (once) ──────────────────────────────────────────────────────────
 @PJL EOJ\r\n
 ESC%-12345X\r\n
 ```
@@ -167,8 +199,6 @@ The PPD declares `*cupsBitsPerColor: 1` and `*cupsColorSpace: 3` so CUPS deliver
 
 ### 7. Bugs Found During Development
 
-Three bugs caused silent print failures when first testing the filter:
-
 **Bug 1 — Missing bare `@PJL\r\n` after UEL**
 The Windows driver emits `ESC%-12345X@PJL\r\n` before the first SET command. Without the bare `@PJL\r\n` line the printer silently discards the entire job.
 
@@ -176,10 +206,16 @@ The Windows driver emits `ESC%-12345X@PJL\r\n` before the first SET command. Wit
 The printer requires both `PAPERWIDTH` and `PAPERLENGTH`. Without `PAPERLENGTH` the printer initialises its engine (noise + LED blink) but never pulls the page.
 
 **Bug 3 — Wrong JBIG BIE options byte**
-jbigkit 2.1 stores the `options` argument to `jbg_enc_options()` **directly** into BIE byte 19 with no bit translation. The Windows driver produces byte 19 = `0x48`. Passing `0x08` (only TPDON in T.82 bit numbering) caused the printer to accept the job, warm up, and then refuse to feed the page. Passing `0x48` fixed it.
+jbigkit 2.1 stores the `options` argument to `jbg_enc_options()` **directly** into BIE byte 19 with no bit translation. The Windows driver produces byte 19 = `0x48`. Passing `0x08` caused the printer to accept the job, warm up, and then refuse to feed the page. Passing `0x48` fixed it.
 
 **Bug 4 — PPD lacked raster format directives**
-Without `*cupsBitsPerColor: 1`, `*cupsColorSpace: 3`, and related PPD keys, CUPS delivered 8-bit grayscale to the filter. The stride was then calculated as `(w+7)/8` (1-bit assumption) but the actual data was 8× wider, producing a malformed JBIG stream.
+Without `*cupsBitsPerColor: 1`, `*cupsColorSpace: 3`, and related PPD keys, CUPS delivered 8-bit grayscale to the filter. The stride was calculated as `(w+7)/8` (1-bit assumption) but the actual data was 8× wider, producing a malformed JBIG stream.
+
+**Bug 5 — Multi-page: only first page printed**
+Discovered by capturing a two-page job from the Windows driver. The firmware uses `@PJL SET PAGESTATUS=END` as the page eject trigger — not the arrival of the next `IMAGELEN`. Without `PAGESTATUS=END` after each page's JBIG data, every subsequent `IMAGELEN` block was treated as another chunk of the same open page. The printer accumulated all pages' data as one giant page 1 and never ejected it. Three additional omissions were found in the same capture:
+- `PAGESTATUS=START` + full media header (`COPIES`, `MEDIASOURCE`, `MEDIATYPE`, `PAPER`, `PAPERWIDTH`, `PAPERLENGTH`, `RESOLUTION`) must precede each page except the first.
+- `DOTCOUNT` (black pixel count) must be emitted per page, immediately before `PAGESTATUS=END`.
+- `cupsBytesPerLine` from the CUPS raster header must be used as the row stride when reading pixel data — a manual `(bpp*w+7)/8` calculation can diverge from CUPS's actual row size, misaligning the stream and causing `cupsRasterReadHeader2` to fail on page 2.
 
 ---
 
