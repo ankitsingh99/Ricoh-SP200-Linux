@@ -251,6 +251,74 @@ Discovered by capturing a two-page job from the Windows driver. The firmware use
 
 ---
 
+## Sharing the Printer Over the Network (Android / Other Devices)
+
+The CUPS filter runs only on Linux or macOS — it cannot run on Android or other devices directly. Instead, share the printer from the Linux machine over IPP. Android (4.4+) supports IPP natively and requires no extra app.
+
+### Step 1 — Allow network access in CUPS
+
+Edit `/etc/cups/cupsd.conf`:
+
+```
+# Change:
+Listen localhost:631
+# To:
+Port 631
+
+# Also add:
+ServerAlias *
+```
+
+Add `Allow @LOCAL` to the relevant `<Location>` blocks:
+
+```
+<Location />
+  Order allow,deny
+  Allow @LOCAL
+</Location>
+
+<Location /admin>
+  Order allow,deny
+  Allow @LOCAL
+</Location>
+
+<Location /printers>
+  Order allow,deny
+  Allow @LOCAL
+</Location>
+```
+
+### Step 2 — Restart CUPS and share the printer
+
+```bash
+sudo systemctl restart cups
+sudo lpadmin -p Ricoh_SP_200_DDST -o printer-is-shared=true
+sudo cupsctl --share-printers
+```
+
+### Step 3 — Open the firewall on port 631
+
+```bash
+# ufw
+sudo ufw allow 631/tcp
+
+# firewalld
+sudo firewall-cmd --permanent --add-service=ipp && sudo firewall-cmd --reload
+```
+
+### Step 4 — Add the printer on Android
+
+1. **Settings → Connected devices → Printing → Default Print Service**
+2. The printer should auto-discover as `Ricoh_SP_200_DDST`.
+3. If not, tap **Add printer** and enter the IPP URL manually:
+   ```
+   ipp://<linux-machine-ip>:631/printers/Ricoh_SP_200_DDST
+   ```
+
+Both devices must be on the same local network. Android sends a standard IPP job to CUPS, which runs it through the `rastertoricohjbig` filter and forwards the PJL+JBIG1 stream to the printer via USB — identical to printing from the Linux machine directly.
+
+---
+
 ## Troubleshooting
 
 **Printer not found by `lpinfo -v`**
