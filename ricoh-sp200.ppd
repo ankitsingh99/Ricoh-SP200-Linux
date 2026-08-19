@@ -2,7 +2,9 @@
 *FormatVersion: "4.3"
 *FileVersion: "1.0"
 *LanguageVersion: English
+*LanguageEncoding: ISOLatin1
 *PCFileName: "RICSP200.PPD"
+*Product: "(Ricoh SP 200)"
 *Manufacturer: "Ricoh"
 *ModelName: "Ricoh SP 200"
 *ShortNickName: "Ricoh SP 200"
@@ -13,7 +15,7 @@
 *DefaultColorSpace: Gray
 *Throughput: "22"
 *cupsVersion: 2.0
-*cupsFilter: "application/vnd.cups-raster 0 rastertoricohjbig"
+*cupsFilter: "application/vnd.cups-raster 0 /Library/Printers/Ricoh/Filter/rastertoricohjbig"
 *cupsSNMPSupplies: False
 
 *OpenUI *PageSize/Paper Size: PickOne

@@ -1,366 +1,199 @@
-# Ricoh SP 200 Linux CUPS Driver
+# Ricoh SP 200 Series CUPS Driver (macOS & Linux)
 
-A native Linux CUPS filter for the Ricoh SP 200 monochrome laser printer, reverse engineered from USB captures of the official Windows driver.
+A native CUPS filter and PPD driver for the **Ricoh SP 200** series monochrome laser printer (Ricoh SP 200, SP 201, SP 202, SP 203, SP 204, and DDST series).
 
-The printer has no official Linux driver and is absent from foo2zjs, OpenPrinting, HPLIP, and Gutenprint. This driver implements the complete print protocol from scratch.
+The Ricoh SP 200 has no official Linux/macOS driver and is absent from standard print stacks (`foo2zjs`, OpenPrinting, Gutenprint, HPLIP). This driver implements the native PJL + JBIG1 bi-level protocol reverse-engineered from USB traffic.
 
 ---
 
-## Files
+## Quick Start (Automated Setup)
 
-| File | Purpose |
-|---|---|
-| `rastertoricohjbig.c` | CUPS filter source |
-| `ricoh-sp200.ppd` | PPD printer description |
+Run the included automated setup script:
+
+```bash
+chmod +x setup.sh test_print.sh uninstall.sh
+./setup.sh
+```
+
+The script will automatically detect your OS, install any missing dependencies, compile the driver binary, configure root permissions, register the printer with CUPS, and check queue readiness.
 
 ---
 
 ## Dependencies
 
-**Arch Linux**
+### macOS (Apple Silicon M1/M2/M3/M4 & Intel)
 ```bash
-sudo pacman -S cups ghostscript jbigkit
+brew install cups jbigkit ghostscript
 ```
 
-**Debian / Ubuntu**
+### Debian / Ubuntu / Linux Mint / Raspberry Pi OS
 ```bash
-sudo apt install libcups2-dev libcupsimage2-dev libjbig-dev jbigkit-bin gcc ghostscript
+sudo apt update
+sudo apt install libcups2-dev libcupsimage2-dev libjbig-dev jbigkit-bin gcc ghostscript cups
 ```
 
-**Fedora / RHEL**
+### Fedora / RHEL / AlmaLinux
 ```bash
 sudo dnf install cups-devel cups-libs jbigkit-devel jbigkit-libs gcc ghostscript
 ```
 
-**macOS**
+### Arch Linux / Manjaro
 ```bash
-brew install cups jbigkit
-brew services start cups   # run Homebrew CUPS on port 631
+sudo pacman -S cups ghostscript jbigkit gcc
 ```
-
-> **Note:** macOS System Integrity Protection (SIP) makes the system CUPS filter
-> directory (`/usr/libexec/cups/filter/`) read-only even for root. Homebrew CUPS
-> installs its own writable filter directory under `$(brew --prefix)/libexec/cups/filter/`
-> and runs a full CUPS daemon that replaces the system one on port 631.
 
 ---
 
-## Build and Install
+## Manual Build & Installation
 
-### Using make (recommended)
+### Using Make
 
 ```bash
-# Build and install the filter + PPD
+# 1. Build and install filter + PPD
 sudo make install
 
-# Register the printer with CUPS (printer must be plugged in via USB)
+# 2. Register printer queue (printer must be plugged in via USB)
 sudo make register
 
-# Test print
-echo "Hello from Linux" | lpr -P Ricoh_SP_200_DDST
+# 3. Test print
+make test
 
-# To remove everything
+# To remove
 sudo make uninstall
 ```
 
-### Manual steps — Linux
-
-```bash
-# Compile
-gcc -O2 -o rastertoricohjbig rastertoricohjbig.c \
-    $(cups-config --libs) -lcupsimage -ljbig
-
-# Install filter and PPD
-sudo install -m 755 rastertoricohjbig /usr/lib/cups/filter/rastertoricohjbig
-sudo install -m 644 ricoh-sp200.ppd   /usr/share/ppd/cupsfilters/
-
-# Register printer (printer must be plugged in via USB)
-sudo lpadmin -p Ricoh_SP_200_DDST \
-    -v "$(lpinfo -v | grep -i ricoh | awk '{print $2}' | head -1)" \
-    -P /usr/share/ppd/cupsfilters/ricoh-sp200.ppd \
-    -E
-
-# Test print
-echo "Hello from Linux" | lpr -P Ricoh_SP_200_DDST
-```
-
-### Manual steps — macOS
-
-```bash
-BREW=$(brew --prefix)
-
-# Compile (Homebrew provides cups and jbigkit headers/libs)
-gcc -O2 -I$BREW/include -o rastertoricohjbig rastertoricohjbig.c \
-    -L$BREW/lib -lcups -lcupsimage -ljbig
-
-# Install filter and PPD
-sudo install -m 755 rastertoricohjbig $BREW/libexec/cups/filter/rastertoricohjbig
-sudo install -m 644 ricoh-sp200.ppd   /Library/Printers/PPDs/Contents/Resources/
-
-# Register printer (printer must be plugged in via USB)
-sudo lpadmin -p Ricoh_SP_200_DDST \
-    -v "$(lpinfo -v | grep -i ricoh | awk '{print $2}' | head -1)" \
-    -P /Library/Printers/PPDs/Contents/Resources/ricoh-sp200.ppd \
-    -E
-
-# Test print
-echo "Hello from macOS" | lpr -P Ricoh_SP_200_DDST
-```
-
 ---
 
-## How It Was Reverse Engineered
+## Manual Step-by-Step Guide
 
-### 1. Capturing USB Traffic
+### macOS
 
-The printer was passed through to a Windows VM via USB. On the Linux host, `usbmon` + Wireshark captured all USB bulk transfers while printing a test document.
-
-```
-# Wireshark filter used:
-usb.transfer_type == 0x03 && usb.endpoint_address.direction == OUT
-```
-
-A single-page job produced two `URB_BULK out` packets (~65 KB and ~59 KB). A two-page job produced three packets, revealing that the Windows driver chunks the JBIG stream across as many USB bulk transfers as needed (each ≤ 65 508 bytes).
-
-### 2. Identifying the Protocol
-
-The first bytes of packet 1 decoded as ASCII:
-
-```
-ESC%-12345X@PJL
-@PJL SET COMPRESS=JBIG
-@PJL SET PAPERWIDTH=4961
-@PJL SET IMAGELEN=65556
-```
-
-This immediately identified the protocol: **PJL (Printer Job Language)** wrapping **JBIG1 (ITU-T T.82)** compressed raster data. The initial hypothesis that the printer used HBPL2 (like other foo2zjs Ricoh printers) was wrong — a grep for `HBPL` found nothing in the stream.
-
-### 3. Decoding the JBIG BIE Header
-
-The 20 bytes following the PJL header were initially assumed to be a proprietary Ricoh header. They turned out to be a standard **JBIG1 BIE (Bi-level Image Entity) header**:
-
-| Offset | Value | Field | Meaning |
-|---|---|---|---|
-| 0–3 | `00 00 01 00` | DL, D, P, reserved | Layer 0, 0 diffs, 1 plane |
-| 4–7 | `00 00 13 61` | Xd | **4961 px** = A4 width @ 600 dpi |
-| 8–11 | `00 00 1b 68` | Yd | **7016 px** = A4 height @ 600 dpi |
-| 12–15 | `00 00 00 80` | L0 | 128 lines per stripe |
-| 16–17 | `00 00` | Mx, Dmax | 0 |
-| 18 | `03` | order | stored directly in BIE byte 18 |
-| 19 | `48` | options | stored directly in BIE byte 19 |
-
-### 4. Discovering the Multi-Page Protocol
-
-A second capture was made printing a two-page document. Extracting all `@PJL` tokens from the concatenated USB stream revealed the complete page lifecycle:
-
-```
-[page 1 JBIG data — first chunk]
-@PJL SET IMAGELEN=13451          ← second chunk of page 1 (driver splits large pages)
-[13451 bytes — continuation of page 1 JBIG stream]
-@PJL SET DOTCOUNT=1477935        ← black pixel count for page 1
-@PJL SET PAGESTATUS=END          ← eject page 1
-@PJL SET PAGESTATUS=START        ← begin page 2
-@PJL SET COPIES=1
-@PJL SET MEDIASOURCE=TRAY1
-@PJL SET MEDIATYPE=PLAINRECYCLE
-@PJL SET PAPER=A4                ← page 2 media settings (repeated every page)
-@PJL SET PAPERWIDTH=4961
-@PJL SET PAPERLENGTH=7016
-@PJL SET RESOLUTION=600
-@PJL SET IMAGELEN=65556          ← page 2 first chunk
-[65556 bytes — page 2 JBIG data, first chunk]
-@PJL SET IMAGELEN=10550          ← page 2 second chunk
-[10550 bytes — page 2 JBIG continuation]
-@PJL SET DOTCOUNT=1266291
-@PJL SET PAGESTATUS=END          ← eject page 2
-@PJL EOJ
-ESC%-12345X
-```
-
-Key findings:
-- **`PAGESTATUS=END` is the page eject trigger.** Without it the firmware treats every subsequent `IMAGELEN` as another chunk of the still-open page and never ejects.
-- **Each page may span multiple `IMAGELEN` chunks.** The driver splits any JBIG stream that exceeds a USB bulk transfer into consecutive `@PJL SET IMAGELEN` blocks, all belonging to the same page. The Linux filter produces smaller JBIG streams (no chunking needed) but the firmware handles both.
-- **Every page except the first gets its own `PAGESTATUS=START` + full media header** (`COPIES`, `MEDIASOURCE`, `MEDIATYPE`, `PAPER`, `PAPERWIDTH`, `PAPERLENGTH`, `RESOLUTION`) before its first `IMAGELEN`.
-- **`DOTCOUNT`** reports the total black pixels for the page and is used by the printer for toner life estimation.
-
-### 5. Complete Protocol Structure
-
-```
-── Job header (once) ──────────────────────────────────────────────────────────
-ESC%-12345X@PJL\r\n
-@PJL SET TIMESTAMP=YYYY/MM/DD HH:MM:SS\r\n
-@PJL SET FILENAME=...\r\n
-@PJL SET COMPRESS=JBIG\r\n
-@PJL SET USERNAME=...\r\n
-@PJL SET COVER=OFF\r\n
-@PJL SET HOLD=OFF\r\n
-@PJL SET PAGESTATUS=START\r\n      ← covers page 1
-@PJL SET COPIES=N\r\n
-@PJL SET MEDIASOURCE=TRAY1\r\n
-@PJL SET MEDIATYPE=PLAINRECYCLE\r\n
-
-── Per-page block (repeat for every page) ─────────────────────────────────────
-  [pages 2+ only:]
-  @PJL SET PAGESTATUS=START\r\n
-  @PJL SET COPIES=N\r\n
-  @PJL SET MEDIASOURCE=TRAY1\r\n
-  @PJL SET MEDIATYPE=PLAINRECYCLE\r\n
-
-  @PJL SET PAPER=<A4|LETTER>\r\n
-  @PJL SET PAPERWIDTH=<px>\r\n
-  @PJL SET PAPERLENGTH=<px>\r\n
-  @PJL SET RESOLUTION=600\r\n
-  @PJL SET IMAGELEN=<N>\r\n
-  <N bytes: JBIG1 BIE header + compressed raster>
-  @PJL SET DOTCOUNT=<page_black_pixels>\r\n
-  @PJL SET PAGESTATUS=END\r\n      ← triggers paper ejection
-
-── End of job (once) ──────────────────────────────────────────────────────────
-@PJL EOJ\r\n
-ESC%-12345X\r\n
-```
-
-### 6. Building the CUPS Filter
-
-The filter (`rastertoricohjbig.c`) uses:
-- **libcups / libcupsimage** — reads the CUPS raster stream from stdin
-- **libjbig** (jbigkit 2.1) — encodes each page as a JBIG1 BIE
-- The encoded BIE is buffered in memory, its size measured, then emitted to stdout preceded by `@PJL SET IMAGELEN=N`
-
-The PPD declares `*cupsBitsPerColor: 1` and `*cupsColorSpace: 3` so CUPS delivers a 1-bit packed K-channel bitmap directly — no conversion needed in the normal path.
-
-### 7. Bugs Found During Development
-
-**Bug 1 — Missing bare `@PJL\r\n` after UEL**
-The Windows driver emits `ESC%-12345X@PJL\r\n` before the first SET command. Without the bare `@PJL\r\n` line the printer silently discards the entire job.
-
-**Bug 2 — Missing `@PJL SET PAPERLENGTH`**
-The printer requires both `PAPERWIDTH` and `PAPERLENGTH`. Without `PAPERLENGTH` the printer initialises its engine (noise + LED blink) but never pulls the page.
-
-**Bug 3 — Wrong JBIG BIE options byte**
-jbigkit 2.1 stores the `options` argument to `jbg_enc_options()` **directly** into BIE byte 19 with no bit translation. The Windows driver produces byte 19 = `0x48`. Passing `0x08` caused the printer to accept the job, warm up, and then refuse to feed the page. Passing `0x48` fixed it.
-
-**Bug 4 — PPD lacked raster format directives**
-Without `*cupsBitsPerColor: 1`, `*cupsColorSpace: 3`, and related PPD keys, CUPS delivered 8-bit grayscale to the filter. The stride was calculated as `(w+7)/8` (1-bit assumption) but the actual data was 8× wider, producing a malformed JBIG stream.
-
-**Bug 5 — Multi-page: only first page printed**
-Discovered by capturing a two-page job from the Windows driver. The firmware uses `@PJL SET PAGESTATUS=END` as the page eject trigger — not the arrival of the next `IMAGELEN`. Without `PAGESTATUS=END` after each page's JBIG data, every subsequent `IMAGELEN` block was treated as another chunk of the same open page. The printer accumulated all pages' data as one giant page 1 and never ejected it. Three additional omissions were found in the same capture:
-- `PAGESTATUS=START` + full media header (`COPIES`, `MEDIASOURCE`, `MEDIATYPE`, `PAPER`, `PAPERWIDTH`, `PAPERLENGTH`, `RESOLUTION`) must precede each page except the first.
-- `DOTCOUNT` (black pixel count) must be emitted per page, immediately before `PAGESTATUS=END`.
-- `cupsBytesPerLine` from the CUPS raster header must be used as the row stride when reading pixel data — a manual `(bpp*w+7)/8` calculation can diverge from CUPS's actual row size, misaligning the stream and causing `cupsRasterReadHeader2` to fail on page 2.
-
----
-
-## Sharing the Printer Over the Network (Android / Other Devices)
-
-The CUPS filter runs only on Linux or macOS — it cannot run on Android or other devices directly. Instead, share the printer from the Linux machine over IPP. Android (4.4+) supports IPP natively and requires no extra app.
-
-### Step 1 — Allow network access in CUPS
-
-Edit `/etc/cups/cupsd.conf`:
-
-```
-# Change:
-Listen localhost:631
-# To:
-Port 631
-
-# Also add:
-ServerAlias *
-```
-
-Add `Allow @LOCAL` to the relevant `<Location>` blocks:
-
-```
-<Location />
-  Order allow,deny
-  Allow @LOCAL
-</Location>
-
-<Location /admin>
-  Order allow,deny
-  Allow @LOCAL
-</Location>
-
-<Location /printers>
-  Order allow,deny
-  Allow @LOCAL
-</Location>
-```
-
-### Step 2 — Restart CUPS and share the printer
-
-```bash
-sudo systemctl restart cups
-sudo lpadmin -p Ricoh_SP_200_DDST -o printer-is-shared=true
-sudo cupsctl --share-printers
-```
-
-### Step 3 — Open the firewall on port 631
-
-```bash
-# ufw
-sudo ufw allow 631/tcp
-
-# firewalld
-sudo firewall-cmd --permanent --add-service=ipp && sudo firewall-cmd --reload
-```
-
-### Step 4 — Add the printer on Android
-
-1. **Settings → Connected devices → Printing → Default Print Service**
-2. The printer should auto-discover as `Ricoh_SP_200_DDST`.
-3. If not, tap **Add printer** and enter the IPP URL manually:
-   ```
-   ipp://<linux-machine-ip>:631/printers/Ricoh_SP_200_DDST
+1. **Compile Driver**:
+   ```bash
+   BREW=$(brew --prefix)
+   gcc -O2 -I$BREW/include -o rastertoricohjbig rastertoricohjbig.c \
+       -L$BREW/lib -lcups -lcupsimage -ljbig
    ```
 
-Both devices must be on the same local network. Android sends a standard IPP job to CUPS, which runs it through the `rastertoricohjbig` filter and forwards the PJL+JBIG1 stream to the printer via USB — identical to printing from the Linux machine directly.
+2. **Install Filter and PPD with Root Ownership**:
+   > **Note for macOS:** macOS CUPS runs in sandbox mode and strictly rejects filters stored in `/opt/homebrew/...` or user-owned paths with *“insecure permissions”* error. Custom filters must be placed in `/Library/Printers/` with `root:wheel` ownership.
+
+   ```bash
+   sudo mkdir -p /Library/Printers/Ricoh/Filter /Library/Printers/PPDs/Contents/Resources
+   sudo install -m 755 rastertoricohjbig /Library/Printers/Ricoh/Filter/rastertoricohjbig
+   sudo install -m 644 ricoh-sp200.ppd    /Library/Printers/PPDs/Contents/Resources/ricoh-sp200.ppd
+   sudo chown -R root:wheel /Library/Printers/Ricoh
+   sudo chmod 755 /Library/Printers/Ricoh/Filter/rastertoricohjbig
+   sudo chmod 644 /Library/Printers/PPDs/Contents/Resources/ricoh-sp200.ppd
+   sudo xattr -d com.apple.quarantine /Library/Printers/Ricoh/Filter/rastertoricohjbig 2>/dev/null || true
+   ```
+
+3. **Register & Enable Printer**:
+   ```bash
+   # Discover USB URI
+   URI=$(/usr/libexec/cups/backend/usb | grep -i ricoh | awk '{print $2}' | head -1)
+
+   sudo lpadmin -p Ricoh_SP_200_DDST -v "$URI" \
+       -P /Library/Printers/PPDs/Contents/Resources/ricoh-sp200.ppd -E
+   sudo cupsenable Ricoh_SP_200_DDST
+   sudo cupsaccept Ricoh_SP_200_DDST
+   ```
+
+4. **Send Test Print**:
+   ```bash
+   echo "Hello from Ricoh SP 200!" | lpr -P Ricoh_SP_200_DDST
+   ```
 
 ---
 
-## Troubleshooting
+### Linux
 
-**Printer not found by `lpinfo -v`**
-```bash
-lsusb | grep -i ricoh
-```
+1. **Compile Driver**:
+   ```bash
+   gcc -O2 -o rastertoricohjbig rastertoricohjbig.c \
+       $(cups-config --libs) -lcupsimage -ljbig
+   ```
 
-**Filter not invoked (job disappears silently)**
-```bash
-ls -la /usr/lib/cups/filter/rastertoricohjbig
-# Must be: -rwxr-xr-x root root
-sudo chmod 755 /usr/lib/cups/filter/rastertoricohjbig
-sudo chown root:root /usr/lib/cups/filter/rastertoricohjbig
-```
+2. **Install Filter & PPD**:
+   ```bash
+   sudo install -m 755 rastertoricohjbig /usr/lib/cups/filter/rastertoricohjbig
+   sudo install -m 644 ricoh-sp200.ppd    /usr/share/ppd/cupsfilters/
+   ```
 
-**CUPS shows printer stopped**
-```bash
-sudo cupsenable Ricoh_SP_200_DDST
-sudo cupsaccept Ricoh_SP_200_DDST
-```
+3. **Register Printer**:
+   ```bash
+   URI=$(lpinfo -v | grep -i ricoh | awk '{print $2}' | head -1)
 
-**Check CUPS error log**
-```bash
-sudo tail -40 /var/log/cups/error_log
-```
+   sudo lpadmin -p Ricoh_SP_200_DDST -v "$URI" \
+       -P /usr/share/ppd/cupsfilters/ricoh-sp200.ppd -E
+   ```
 
-**Build fails — missing jbig.h**
-```bash
-# Arch:   sudo pacman -S jbigkit
-# Debian: sudo apt install libjbig-dev
-# Fedora: sudo dnf install jbigkit-devel
-# macOS:  brew install jbigkit
-```
+---
 
-**macOS: filter installs but printer not found by CUPS**
+## Troubleshooting Guide
+
+### 1. Error: `File ".../rastertoricohjbig" has insecure permissions (0100755/uid=501)`
+- **Cause:** On macOS, CUPS rejects filters located in user directories or `/opt/homebrew` because non-root users have write access to parent directories.
+- **Fix:** Install the filter into `/Library/Printers/Ricoh/Filter/rastertoricohjbig` and ensure ownership is `root:wheel`:
+  ```bash
+  sudo chown -R root:wheel /Library/Printers/Ricoh
+  sudo chmod 755 /Library/Printers/Ricoh/Filter/rastertoricohjbig
+  ```
+
+### 2. Printer shows as `Offline`
+- **Cause 1: Apple Silicon Accessory Prompt:** On macOS Ventura/Sonoma/Sequoia, check for the prompt **"Allow accessory to connect?"** or enable it in **System Settings → Privacy & Security → Allow accessories to connect**.
+- **Cause 2: USB Cable / Hub:** Ensure the printer power switch is ON (solid green light) and the USB-B cable is securely connected. Check if macOS sees it:
+  ```bash
+  /usr/libexec/cups/backend/usb
+  ```
+  *(Should output `direct usb://RICOH/SP%20200%20DDST?serial=...`)*.
+
+### 3. Clear Stuck Print Jobs
 ```bash
-# Ensure Homebrew CUPS is running (not the system daemon)
-brew services restart cups
-lpinfo -v | grep -i ricoh
+cancel -a Ricoh_SP_200_DDST
 ```
 
 ---
 
-*Reverse engineered May 2026. No proprietary code used or distributed.*
-*Protocol wire format documentation is not subject to copyright.*
+## How the Protocol Works
+
+The Ricoh SP 200 uses **PJL (Printer Job Language)** wrapping **JBIG1 (ITU-T T.82)** compressed 1-bit raster data.
+
+1. **Job Header**:
+   ```pjl
+   \x1b%-12345X@PJL
+   @PJL SET TIMESTAMP=YYYY/MM/DD HH:MM:SS
+   @PJL SET FILENAME=printjob
+   @PJL SET COMPRESS=JBIG
+   @PJL SET USERNAME=lp
+   @PJL SET COVER=OFF
+   @PJL SET HOLD=OFF
+   @PJL SET PAGESTATUS=START
+   @PJL SET COPIES=1
+   @PJL SET MEDIASOURCE=TRAY1
+   @PJL SET MEDIATYPE=PLAINRECYCLE
+   ```
+
+2. **Page Data**:
+   - For each page, CUPS raster bitmap (600 DPI monochrome 1-bit) is compressed using `jbigkit` (`jbg_enc_init`, `jbg_enc_out`).
+   - The compressed JBIG stream is chunked into payloads $\le 65508$ bytes.
+   - Each chunk is preceded by: `@PJL SET IMAGELEN=<chunk_size>\r\n`.
+   - At page end: `@PJL SET DOTCOUNT=<black_pixels>\r\n@PJL SET PAGESTATUS=END\r\n`.
+
+3. **Job Trailer**:
+   ```pjl
+   \x1b%-12345X
+   ```
+
+---
+
+## Repository Files
+
+| File | Description |
+|---|---|
+| `rastertoricohjbig.c` | Native C source code for the CUPS raster filter |
+| `ricoh-sp200.ppd` | Adobe-compliant PostScript Printer Description file |
+| `setup.sh` | Automated multi-platform installer and configuration script |
+| `test_print.sh` | Quick test print utility script |
+| `uninstall.sh` | Uninstaller script to clean up printer queues and files |
+| `Makefile` | Multi-platform build and install recipes |
