@@ -4,7 +4,7 @@
 # Works on macOS (Apple Silicon & Intel) and Linux (Debian/Ubuntu/Fedora/Arch)
 # ==============================================================================
 
-set -e
+set -euo pipefail
 
 PRINTER_NAME="Ricoh_SP_200_DDST"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,14 +61,14 @@ elif [ -f /etc/debian_version ]; then
     require_sudo
     echo "Updating packages and installing build dependencies..."
     sudo apt-get update
-    sudo apt-get install -y libcups2-dev libcupsimage2-dev libjbig-dev jbigkit-bin gcc ghostscript cups
+    sudo apt-get install -y libcups2-dev libcupsimage2-dev libjbig-dev jbigkit-bin gcc ghostscript cups cups-client
     
     FILTER_DIR="/usr/lib/cups/filter"
     PPD_DIR="/usr/share/ppd/cupsfilters"
     PPD_FILE="$PPD_DIR/ricoh-sp200.ppd"
     FILTER_BIN="$FILTER_DIR/rastertoricohjbig"
     CFLAGS="-O2 -Wall -Wextra"
-    LIBS="$(cups-config --libs) -lcupsimage -ljbig"
+    LIBS="$(cups-config --libs 2>/dev/null || echo -lcups) -lcupsimage -ljbig"
 
 elif [ -f /etc/fedora-release ] || [ -f /etc/redhat-release ]; then
     # Fedora / RHEL
@@ -80,7 +80,7 @@ elif [ -f /etc/fedora-release ] || [ -f /etc/redhat-release ]; then
     PPD_FILE="$PPD_DIR/ricoh-sp200.ppd"
     FILTER_BIN="$FILTER_DIR/rastertoricohjbig"
     CFLAGS="-O2 -Wall -Wextra"
-    LIBS="$(cups-config --libs) -lcupsimage -ljbig"
+    LIBS="$(cups-config --libs 2>/dev/null || echo -lcups) -lcupsimage -ljbig"
 
 elif [ -f /etc/arch-release ]; then
     # Arch Linux
@@ -92,7 +92,7 @@ elif [ -f /etc/arch-release ]; then
     PPD_FILE="$PPD_DIR/ricoh-sp200.ppd"
     FILTER_BIN="$FILTER_DIR/rastertoricohjbig"
     CFLAGS="-O2 -Wall -Wextra"
-    LIBS="$(cups-config --libs) -lcupsimage -ljbig"
+    LIBS="$(cups-config --libs 2>/dev/null || echo -lcups) -lcupsimage -ljbig"
 else
     echo "Unsupported or unknown OS. Proceeding with generic Linux paths..."
     FILTER_DIR="/usr/lib/cups/filter"
@@ -121,17 +121,18 @@ echo "[3/5] Installing driver files to system directories..."
 require_sudo
 
 sudo mkdir -p "$FILTER_DIR" "$PPD_DIR"
-
 sudo install -m 755 rastertoricohjbig "$FILTER_BIN"
-sudo install -m 644 ricoh-sp200.ppd "$PPD_FILE"
 
 if [ "$OS" = "Darwin" ]; then
-    # Fix ownership to prevent macOS CUPS sandbox insecure permissions error
+    # Patch PPD with absolute filter path and fix ownership to prevent macOS CUPS sandbox insecure permissions error
+    sed 's|application/vnd.cups-raster 0 .*|application/vnd.cups-raster 0 /Library/Printers/Ricoh/Filter/rastertoricohjbig|' ricoh-sp200.ppd | sudo tee "$PPD_FILE" >/dev/null
     sudo chown -R root:wheel /Library/Printers/Ricoh
     sudo chown root:wheel "$FILTER_BIN" "$PPD_FILE"
     sudo chmod 755 "$FILTER_BIN"
     sudo chmod 644 "$PPD_FILE"
     sudo xattr -d com.apple.quarantine "$FILTER_BIN" 2>/dev/null || true
+else
+    sudo install -m 644 ricoh-sp200.ppd "$PPD_FILE"
 fi
 
 echo "  ✓ Filter installed at: $FILTER_BIN"
@@ -179,7 +180,7 @@ echo "  ✓ Printer '$PRINTER_NAME' is registered and enabled."
 # ------------------------------------------------------------------------------
 echo ""
 echo "[5/5] Checking printer queue status..."
-lpstat -p "$PRINTER_NAME" -l
+lpstat -p "$PRINTER_NAME" -l 2>/dev/null || true
 
 echo ""
 echo "========================================================"

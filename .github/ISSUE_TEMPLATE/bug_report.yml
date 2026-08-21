@@ -1,0 +1,91 @@
+name: Bug Report
+description: Report an issue or error when building, installing, or printing
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug report! Please fill out the sections below to help us diagnose and fix the issue.
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: What OS are you running?
+      options:
+        - macOS (Apple Silicon M1/M2/M3/M4)
+        - macOS (Intel)
+        - Debian / Ubuntu / Linux Mint / Pop!_OS
+        - Raspberry Pi OS (ARM32 / ARM64)
+        - Fedora / RHEL / AlmaLinux / Rocky
+        - Arch Linux / Manjaro
+        - Other (specify in description)
+    validations:
+      required: true
+
+  - type: input
+    id: os_version
+    attributes:
+      label: OS Version & Architecture
+      description: e.g. Ubuntu 24.04 LTS x86_64, macOS Sonoma 14.5 arm64
+      placeholder: e.g., Ubuntu 24.04 LTS (x86_64)
+    validations:
+      required: true
+
+  - type: input
+    id: printer_model
+    attributes:
+      label: Printer Model
+      description: e.g. Ricoh SP 200, SP 201, SP 202, SP 203, SP 204, SP 210, etc.
+      placeholder: e.g., Ricoh SP 200
+    validations:
+      required: true
+
+  - type: dropdown
+    id: connection_type
+    attributes:
+      label: Connection Type
+      options:
+        - USB Direct
+        - USB via Hub / Adapter
+        - Network / CUPS Shared
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug_description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what the problem is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: How do we reproduce the issue?
+      value: |
+        1. Run './setup.sh' (or 'make install')
+        2. Send print job with 'lpr ...'
+        3. See error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Logs / Terminal Output
+      description: Please paste relevant terminal output or `/var/log/cups/error_log` messages.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Any other context about the problem (e.g. firmware version, paper size used).
+    validations:
+      required: false

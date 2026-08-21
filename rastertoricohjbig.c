@@ -1,18 +1,22 @@
 /*
- * rastertoricohjbig.c — CUPS raster filter for Ricoh SP 200
+ * rastertoricohjbig.c — CUPS raster filter for Ricoh SP 200 series printers
  *
- * Converts CUPS raster input to the Ricoh SP 200 PJL+JBIG1 protocol.
+ * Converts CUPS raster input to the Ricoh SP 200 PJL + JBIG1 bi-level protocol.
+ *
+ * SPDX-License-Identifier: MIT
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <jbig.h>
 #include <cups/cups.h>
 #include <cups/raster.h>
 
- /* Growable output buffer used as the jbg_enc_out callback target */
+/* Growable output buffer used as the jbg_enc_out callback target */
 typedef struct {
     unsigned char* data;
     size_t         size;
@@ -21,10 +25,16 @@ typedef struct {
 
 static void buf_cb(unsigned char* d, size_t n, void* arg)
 {
-    Buf* b = arg;
+    Buf* b = (Buf*)arg;
     if (b->size + n > b->cap) {
-        b->cap = (b->size + n) * 2;
-        b->data = realloc(b->data, b->cap);
+        size_t new_cap = (b->size + n) * 2;
+        unsigned char* new_data = (unsigned char*)realloc(b->data, new_cap);
+        if (!new_data) {
+            fprintf(stderr, "ERROR: rastertoricohjbig: Out of memory expanding buffer\n");
+            return;
+        }
+        b->data = new_data;
+        b->cap = new_cap;
     }
     memcpy(b->data + b->size, d, n);
     b->size += n;
@@ -37,8 +47,16 @@ static void write_job_header(int copies)
 
     fputs("\x1b%-12345X@PJL\r\n", stdout);
 
+    if (t) {
+        fprintf(stdout,
+            "@PJL SET TIMESTAMP=%04d/%02d/%02d %02d:%02d:%02d\r\n",
+            t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+            t->tm_hour, t->tm_min, t->tm_sec);
+    } else {
+        fprintf(stdout, "@PJL SET TIMESTAMP=2026/01/01 00:00:00\r\n");
+    }
+
     fprintf(stdout,
-        "@PJL SET TIMESTAMP=%04d/%02d/%02d %02d:%02d:%02d\r\n"
         "@PJL SET FILENAME=printjob\r\n"
         "@PJL SET COMPRESS=JBIG\r\n"
         "@PJL SET USERNAME=lp\r\n"
@@ -48,8 +66,6 @@ static void write_job_header(int copies)
         "@PJL SET COPIES=%d\r\n"
         "@PJL SET MEDIASOURCE=TRAY1\r\n"
         "@PJL SET MEDIATYPE=PLAINRECYCLE\r\n",
-        t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-        t->tm_hour, t->tm_min, t->tm_sec,
         copies);
 }
 
@@ -58,9 +74,11 @@ static unsigned long count_dots(const unsigned char* bmp, unsigned w, unsigned h
 {
     unsigned stride = (w + 7) / 8;
     unsigned long n = 0;
-    for (unsigned y = 0; y < h; y++)
-        for (unsigned x = 0; x < stride; x++)
-            n += __builtin_popcount(bmp[y * stride + x]);
+    for (unsigned y = 0; y < h; y++) {
+        for (unsigned x = 0; x < stride; x++) {
+            n += (unsigned long)__builtin_popcount(bmp[y * stride + x]);
+        }
+    }
     return n;
 }
 
@@ -81,7 +99,12 @@ static void write_page(unsigned char* bmp, unsigned w, unsigned h,
     const char* paper, int first_page,
     unsigned dpi, int copies)
 {
-    Buf buf = { malloc(1 << 17), 0, 1 << 17 };
+    Buf buf = { (unsigned char*)malloc(1 << 17), 0, 1 << 17 };
+    if (!buf.data) {
+        fprintf(stderr, "ERROR: rastertoricohjbig: Out of memory allocating page buffer\n");
+        return;
+    }
+
     struct jbg_enc_state enc;
     unsigned char* planes[1] = { bmp };
 
@@ -107,7 +130,7 @@ static void write_page(unsigned char* bmp, unsigned w, unsigned h,
         paper, w, h, dpi);
 
     jbg_enc_init(&enc, w, h, 1, planes, buf_cb, &buf);
-    /* jbigkit 2.1 stores the order and options arguments directly into BIE
+    /* jbigkit stores the order and options arguments directly into BIE
      * bytes 18 and 19. Both must match the Windows driver's output exactly:
      * byte 18 = 0x03, byte 19 = 0x48. Sending byte 19 = 0x08 causes the
      * printer to warm up but refuse to pull the page. */
@@ -133,10 +156,38 @@ static void write_page(unsigned char* bmp, unsigned w, unsigned h,
 
 int main(int argc, char* argv[])
 {
-    int copies = (argc > 4) ? atoi(argv[4]) : 1;
-    if (copies < 1) copies = 1;
+    int copies = 1;
+    int fd = 0;
 
-    cups_raster_t* ras = cupsRasterOpen(0, CUPS_RASTER_READ);
+    /*
+     * CUPS filter command line arguments:
+     * argv[1] = Job ID
+     * argv[2] = User
+     * argv[3] = Title
+     * argv[4] = Number of copies
+     * argv[5] = Options
+     * argv[6] = Optional filename (if omitted, read from stdin fd=0)
+     */
+    if (argc >= 5) {
+        copies = atoi(argv[4]);
+        if (copies < 1) copies = 1;
+    }
+
+    if (argc >= 7 && argv[6] && argv[6][0] != '\0') {
+        fd = open(argv[6], O_RDONLY);
+        if (fd < 0) {
+            fprintf(stderr, "ERROR: rastertoricohjbig: Unable to open print file '%s'\n", argv[6]);
+            return 1;
+        }
+    }
+
+    cups_raster_t* ras = cupsRasterOpen(fd, CUPS_RASTER_READ);
+    if (!ras) {
+        fprintf(stderr, "ERROR: rastertoricohjbig: Unable to open raster stream\n");
+        if (fd != 0) close(fd);
+        return 1;
+    }
+
     cups_page_header2_t hdr;
     int                 page = 0;
 
@@ -154,13 +205,17 @@ int main(int argc, char* argv[])
 
         const char* paper = (hdr.PageSize[0] > 610) ? "LETTER" : "A4";
 
-        unsigned char* bmp = malloc(stride * h);
+        unsigned char* bmp = (unsigned char*)malloc(stride * h);
         if (!bmp) {
-            fputs("rastertoricohjbig: out of memory\n", stderr);
+            fprintf(stderr, "ERROR: rastertoricohjbig: Out of memory allocating raster bitmap\n");
+            cupsRasterClose(ras);
+            if (fd != 0) close(fd);
             return 1;
         }
-        for (unsigned y = 0; y < h; y++)
+
+        for (unsigned y = 0; y < h; y++) {
             cupsRasterReadPixels(ras, bmp + y * stride, stride);
+        }
 
         /* The PPD requests 1-bit K raster, so bpp == 1 in normal operation.
          * This fallback converts 8-bit gray or 24-bit RGB if a different CUPS
@@ -168,32 +223,38 @@ int main(int argc, char* argv[])
         unsigned char* bmp1 = bmp;
         if (bpp > 1) {
             unsigned stride1 = (w + 7) / 8;
-            bmp1 = calloc(stride1, h);
+            bmp1 = (unsigned char*)calloc(stride1, h);
             if (!bmp1) {
-                fputs("rastertoricohjbig: out of memory\n", stderr);
+                fprintf(stderr, "ERROR: rastertoricohjbig: Out of memory allocating 1-bit conversion buffer\n");
                 free(bmp);
+                cupsRasterClose(ras);
+                if (fd != 0) close(fd);
                 return 1;
             }
             for (unsigned y = 0; y < h; y++) {
                 for (unsigned x = 0; x < w; x++) {
                     unsigned char px;
-                    if (bpp == 8)
+                    if (bpp == 8) {
                         px = bmp[y * stride + x];
-                    else  /* 24-bit RGB → luminance average */
-                        px = ((unsigned)bmp[y * stride + x * 3] +
+                    } else {  /* 24-bit RGB → luminance average */
+                        px = (unsigned char)(((unsigned)bmp[y * stride + x * 3] +
                             bmp[y * stride + x * 3 + 1] +
-                            bmp[y * stride + x * 3 + 2]) / 3;
+                            bmp[y * stride + x * 3 + 2]) / 3);
+                    }
                     /* CUPS_CSPACE_K (3): 0 = white, 1 = black.
                      * All other spaces: 0 = black, 255 = white. */
                     int black = (cspace == 3) ? (px > 128) : (px < 128);
-                    if (black)
+                    if (black) {
                         bmp1[y * stride1 + x / 8] |= (0x80 >> (x & 7));
+                    }
                 }
             }
         }
 
         write_page(bmp1, w, h, paper, page == 0, dpi, copies);
-        if (bpp > 1) free(bmp1);
+        if (bpp > 1) {
+            free(bmp1);
+        }
         free(bmp);
 
         page++;
@@ -201,6 +262,9 @@ int main(int argc, char* argv[])
     }
 
     cupsRasterClose(ras);
+    if (fd != 0) {
+        close(fd);
+    }
 
     fputs("@PJL EOJ\r\n\x1b%-12345X\r\n", stdout);
     fflush(stdout);

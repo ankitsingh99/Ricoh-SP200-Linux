@@ -1,0 +1,54 @@
+name: Feature Request / Hardware Compatibility
+description: Suggest a feature, enhancement, or report hardware test results
+title: "[Feature / Compatibility]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve the Ricoh SP 200 driver!
+
+  - type: dropdown
+    id: request_type
+    attributes:
+      label: Request Type
+      options:
+        - Hardware Compatibility Report (tested on a new model)
+        - Feature Suggestion (e.g. Duplexing, Page Scaling, Network raw port support)
+        - Build / Packaging Improvement (e.g. RPM/DEB/Homebrew formula)
+        - Documentation Improvement
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: printer_model
+    attributes:
+      label: Printer Model (if applicable)
+      placeholder: e.g., Ricoh SP 201N / SP 210 / SP 204SF
+    validations:
+      required: false
+
+  - type: textarea
+    id: feature_description
+    attributes:
+      label: Description
+      description: Explain the feature, enhancement, or test results in detail.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Motivation & Use Case
+      description: Why would this be useful to users of this driver?
+    validations:
+      required: false
+
+  - type: textarea
+    id: technical_details
+    attributes:
+      label: Technical Details / Packet Captures
+      description: Any technical info, PJL commands, USB captures, or PPD attributes that can help.
+    validations:
+      required: false

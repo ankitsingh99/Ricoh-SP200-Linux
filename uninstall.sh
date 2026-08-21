@@ -3,7 +3,7 @@
 # Ricoh SP 200 - Uninstaller Script
 # ==============================================================================
 
-set -e
+set -euo pipefail
 
 PRINTER_NAME="Ricoh_SP_200_DDST"
 OS="$(uname -s)"

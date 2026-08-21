@@ -1,2 +1,16 @@
-binaries
+# Binaries and object files
 rastertoricohjbig
+*.o
+*.out
+binaries/
+
+# OS and Editor artifacts
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# Build logs & temp files
+*.log
+*.tmp
