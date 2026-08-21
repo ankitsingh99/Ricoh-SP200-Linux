@@ -2,13 +2,26 @@
 
 [![CI](https://github.com/ankitsingh99/ricoh-universal-ddst-driver/actions/workflows/ci.yml/badge.svg)](https://github.com/ankitsingh99/ricoh-universal-ddst-driver/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ankitsingh99/ricoh-universal-ddst-driver?color=blue)](https://github.com/ankitsingh99/ricoh-universal-ddst-driver/releases)
+[![Discussions](https://img.shields.io/badge/Discussions-Community%20Q%26A-orange.svg)](https://github.com/ankitsingh99/ricoh-universal-ddst-driver/discussions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-blue.svg)](#supported-operating-systems)
 [![CUPS Version](https://img.shields.io/badge/CUPS-2.0%2B-blue.svg)](#prerequisites--dependencies)
 
-A native, high-performance CUPS raster filter and Adobe-compliant PPD driver suite for **Ricoh DDST/GDI monochrome and laser printers** on **macOS** (Apple Silicon M1/M2/M3/M4 & Intel x86_64) and **Linux**.
+A native, high-performance CUPS raster filter and Adobe-compliant PPD driver suite for **Ricoh DDST/GDI monochrome laser and multifunction printers** on **macOS** (Apple Silicon M1/M2/M3/M4 & Intel x86_64) and **Linux**.
 
 Consumer and SMB Ricoh DDST/GDI printers lack official Linux and macOS drivers and are absent from standard printer stacks (`foo2zjs`, OpenPrinting, Gutenprint, HPLIP). This project provides a direct native C implementation of the PJL + ITU-T T.82 JBIG1 wire protocol reverse-engineered from USB traffic.
+
+---
+
+> [!IMPORTANT]
+> **Hardware Testing & Model Support Status**
+> - **Tested Hardware**: This driver has been physically tested and verified with the **Ricoh SP 200** printer.
+> - **Extrapolated Models**: Support for other models (SP 100, SP 110/111/112, SP 150, SP 210, SP 230, and SP 310 series) has been **extrapolated** from DDST protocol specifications and reverse-engineered packet captures, but has **not yet been physically tested on those individual models** by the maintainer.
+> - **Community Testing & Discussions**: If you use this driver with other Ricoh models and encounter any issues or errors, please [**Open a Discussion on GitHub**](https://github.com/ankitsingh99/ricoh-universal-ddst-driver/discussions) or submit an issue so we can help and refine compatibility.
+> - **Contributions**: Community contributions (hardware verification reports, USB packet captures, and pull requests) are warmly welcomed!
+
+> [!NOTE]
+> **AI Usage Notice**: This project utilized Artificial Intelligence (AI) assistance for protocol analysis, codebase modernization, and multi-model feature extrapolation.
 
 ---
 

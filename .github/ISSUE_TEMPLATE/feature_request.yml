@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for helping improve the Ricoh SP 200 driver!
+        Thank you for helping improve the Ricoh Universal DDST Driver Suite!
 
   - type: dropdown
     id: request_type
@@ -25,7 +25,7 @@ body:
     id: printer_model
     attributes:
       label: Printer Model (if applicable)
-      placeholder: e.g., Ricoh SP 201N / SP 210 / SP 204SF
+      placeholder: e.g., Ricoh SP 111 / SP 150 / SP 200 / SP 210 / SP 230 / SP 310
     validations:
       required: false
 

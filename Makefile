@@ -92,7 +92,7 @@ test:
 	@echo "Sending test print to $(PRINTER)..."
 	@{ \
 		printf "========================================\n"; \
-		printf "  Ricoh SP 200 Test Page\n"; \
+		printf "  Ricoh Universal DDST Test Page\n"; \
 		printf "  Date: %s\n" "$$(date)"; \
 		printf "  Driver: Native Universal DDST Filter\n"; \
 		printf "========================================\n"; \

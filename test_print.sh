@@ -5,8 +5,18 @@
 
 set -euo pipefail
 
-PRINTER_NAME="Ricoh_SP_200_DDST"
+PRINTER_NAME="${1:-}"
 
+if [ -z "$PRINTER_NAME" ]; then
+    # Automatically detect any registered Ricoh queue from CUPS
+    PRINTER_NAME=$(lpstat -p 2>/dev/null | grep -i "Ricoh" | awk '{print $2}' | head -1 || true)
+fi
+
+if [ -z "$PRINTER_NAME" ]; then
+    PRINTER_NAME="Ricoh_SP_200_DDST"
+fi
+
+echo "Target printer queue: '$PRINTER_NAME'"
 echo "Checking printer '$PRINTER_NAME' status..."
 lpstat -p "$PRINTER_NAME" -l 2>/dev/null || echo "Warning: Printer queue '$PRINTER_NAME' not found or CUPS not running."
 
