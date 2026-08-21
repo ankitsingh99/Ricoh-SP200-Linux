@@ -38,9 +38,9 @@ jobs:
         run: |
           brew install cups jbigkit ghostscript
 
-      - name: Validate PPD file with cupstestppd
+      - name: Validate all PPD files with cupstestppd
         run: |
-          cupstestppd -W filters ricoh-sp200.ppd
+          cupstestppd -W filters ppd/*.ppd ricoh-sp200.ppd
 
       - name: Check Shell Scripts Syntax
         run: |
@@ -48,12 +48,13 @@ jobs:
           bash -n test_print.sh
           bash -n uninstall.sh
 
-      - name: Build Driver Binary
+      - name: Build Universal Driver Binaries
         run: |
           make clean
           make CFLAGS="-O2 -Wall -Wextra -Werror" build
 
-      - name: Verify Binary
+      - name: Verify Output Binaries
         run: |
+          test -f rastertoricohddst
           test -f rastertoricohjbig
-          file rastertoricohjbig
+          file rastertoricohddst rastertoricohjbig

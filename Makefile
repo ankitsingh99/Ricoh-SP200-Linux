@@ -1,8 +1,9 @@
 CC      ?= gcc
 CFLAGS  ?= -O2 -Wall -Wextra
-FILTER   = rastertoricohjbig
-SRC      = rastertoricohjbig.c
-PPD      = ricoh-sp200.ppd
+FILTER   = rastertoricohddst
+LEGACY_FILTER = rastertoricohjbig
+SRC      = rastertoricohddst.c
+PPD_DIR_SRC = ppd
 PRINTER ?= Ricoh_SP_200_DDST
 
 UNAME := $(shell uname -s)
@@ -30,34 +31,44 @@ endif
 all: build
 
 help:
-	@echo "Ricoh SP 200 Driver Makefile"
-	@echo "----------------------------"
+	@echo "Ricoh Universal DDST/GDI Driver Suite Makefile"
+	@echo "-----------------------------------------------"
 	@echo "make build         - Compile the CUPS raster filter binary"
-	@echo "sudo make install  - Install filter and PPD into system directories"
-	@echo "sudo make register - Register and enable the printer queue with CUPS"
+	@echo "sudo make install  - Install filter and all PPDs into system directories"
+	@echo "sudo make register - Register and enable default printer queue with CUPS"
 	@echo "make test          - Send a test page to $(PRINTER)"
 	@echo "sudo make uninstall- Remove printer queue and driver files"
 	@echo "make clean         - Remove compiled binaries"
 
-build: $(FILTER)
+build: $(FILTER) $(LEGACY_FILTER)
 
 $(FILTER): $(SRC)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $@ $< $(LIBS)
+
+$(LEGACY_FILTER): rastertoricohjbig.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $@ $< $(LIBS)
 
 install: build
 	mkdir -p $(DESTDIR)$(FILTER_DIR) $(DESTDIR)$(PPD_DIR)
 	install -m 755 $(FILTER) $(DESTDIR)$(FILTER_DIR)/$(FILTER)
+	install -m 755 $(LEGACY_FILTER) $(DESTDIR)$(FILTER_DIR)/$(LEGACY_FILTER)
 ifeq ($(UNAME), Darwin)
-	# macOS sandbox requires absolute path in PPD and root:wheel ownership
-	sed 's|application/vnd.cups-raster 0 .*|application/vnd.cups-raster 0 /Library/Printers/Ricoh/Filter/rastertoricohjbig|' $(PPD) > $(DESTDIR)$(PPD_DIR)/$(PPD)
-	chmod 644 $(DESTDIR)$(PPD_DIR)/$(PPD)
-	chown -R root:wheel /Library/Printers/Ricoh $(DESTDIR)$(PPD_DIR)/$(PPD) 2>/dev/null || true
-	xattr -d com.apple.quarantine $(DESTDIR)$(FILTER_DIR)/$(FILTER) 2>/dev/null || true
+	# macOS sandbox requires absolute filter paths in PPDs and root:wheel ownership
+	@for ppd in $(PPD_DIR_SRC)/*.ppd ricoh-sp200.ppd; do \
+		if [ -f "$$ppd" ]; then \
+			target="$(DESTDIR)$(PPD_DIR)/$$(basename $$ppd)"; \
+			sed 's|application/vnd.cups-raster 0 rastertoricohddst|application/vnd.cups-raster 0 /Library/Printers/Ricoh/Filter/rastertoricohddst|g; s|application/vnd.cups-raster 0 rastertoricohjbig|application/vnd.cups-raster 0 /Library/Printers/Ricoh/Filter/rastertoricohjbig|g' "$$ppd" > "$$target"; \
+			chmod 644 "$$target"; \
+		fi; \
+	done
+	chown -R root:wheel /Library/Printers/Ricoh $(DESTDIR)$(PPD_DIR)/ricoh-sp*.ppd 2>/dev/null || true
+	xattr -d com.apple.quarantine $(DESTDIR)$(FILTER_DIR)/$(FILTER) $(DESTDIR)$(FILTER_DIR)/$(LEGACY_FILTER) 2>/dev/null || true
 else
-	install -m 644 $(PPD) $(DESTDIR)$(PPD_DIR)/$(PPD)
+	install -m 644 $(PPD_DIR_SRC)/*.ppd $(DESTDIR)$(PPD_DIR)/
+	install -m 644 ricoh-sp200.ppd $(DESTDIR)$(PPD_DIR)/
 endif
-	@echo "Filter and PPD installed successfully."
-	@echo "Run 'sudo make register' to register printer with CUPS."
+	@echo "Filter and PPD library installed successfully."
+	@echo "Run 'sudo make register' or './setup.sh' to register your printer."
 
 register:
 	@URI=$$(/usr/libexec/cups/backend/usb 2>/dev/null | grep -i ricoh | awk '{print $$2}' | head -1); \
@@ -72,7 +83,7 @@ register:
 		URI="usb://RICOH/SP%20200%20DDST"; \
 	fi; \
 	lpadmin -x $(PRINTER) 2>/dev/null || true; \
-	lpadmin -p $(PRINTER) -v "$$URI" -P $(PPD_DIR)/$(PPD) -E && \
+	lpadmin -p $(PRINTER) -v "$$URI" -P $(PPD_DIR)/ricoh-sp200.ppd -E && \
 	cupsenable $(PRINTER) 2>/dev/null || true; \
 	cupsaccept $(PRINTER) 2>/dev/null || true; \
 	echo "Printer '$(PRINTER)' registered and enabled at $$URI."
@@ -83,19 +94,19 @@ test:
 		printf "========================================\n"; \
 		printf "  Ricoh SP 200 Test Page\n"; \
 		printf "  Date: %s\n" "$$(date)"; \
-		printf "  Driver: Native JBIG1 CUPS Filter\n"; \
+		printf "  Driver: Native Universal DDST Filter\n"; \
 		printf "========================================\n"; \
 	} | lpr -P $(PRINTER)
 	@echo "Job submitted."
 
 uninstall:
 	lpadmin -x $(PRINTER) 2>/dev/null || true
-	rm -f $(DESTDIR)$(FILTER_DIR)/$(FILTER)
-	rm -f $(DESTDIR)$(PPD_DIR)/$(PPD)
+	rm -f $(DESTDIR)$(FILTER_DIR)/$(FILTER) $(DESTDIR)$(FILTER_DIR)/$(LEGACY_FILTER)
+	rm -f $(DESTDIR)$(PPD_DIR)/ricoh-sp*.ppd
 ifeq ($(UNAME), Darwin)
 	rm -rf /Library/Printers/Ricoh 2>/dev/null || true
 endif
 	@echo "Uninstalled."
 
 clean:
-	rm -f $(FILTER)
+	rm -f $(FILTER) $(LEGACY_FILTER)

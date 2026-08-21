@@ -1,21 +1,21 @@
 #!/bin/bash
 # ==============================================================================
-# Ricoh SP 200 CUPS Driver - Automated Setup & Installer
-# Works on macOS (Apple Silicon & Intel) and Linux (Debian/Ubuntu/Fedora/Arch)
+# Ricoh Universal DDST/GDI CUPS Driver Suite - Automated Installer
+# Supports: Ricoh SP 100, SP 110, SP 150, SP 200, SP 210, SP 230, SP 310 Series
+# Platforms: Linux (Debian, Ubuntu, Fedora, Arch) & macOS (Apple Silicon/Intel)
 # ==============================================================================
 
 set -euo pipefail
 
-PRINTER_NAME="Ricoh_SP_200_DDST"
+DEFAULT_PRINTER_NAME="Ricoh_SP_200_DDST"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OS="$(uname -s)"
 
 echo "========================================================"
-echo "  Ricoh SP 200 CUPS Driver Installer"
+echo "  Ricoh Universal DDST/GDI Driver Suite Installer"
 echo "  Detected OS: $OS ($(uname -m))"
 echo "========================================================"
 
-# Check if running with sudo when needed
 require_sudo() {
     if [ "$EUID" -ne 0 ]; then
         echo ""
@@ -31,15 +31,12 @@ echo ""
 echo "[1/5] Checking and installing dependencies..."
 
 if [ "$OS" = "Darwin" ]; then
-    # macOS
     if ! command -v brew >/dev/null 2>&1; then
         echo "Error: Homebrew is not installed. Please install Homebrew from https://brew.sh/"
         exit 1
     fi
 
     BREW_PREFIX="$(brew --prefix)"
-    
-    # Check packages
     for pkg in cups jbigkit ghostscript; do
         if ! brew list --formula "$pkg" >/dev/null 2>&1; then
             echo "Installing $pkg via Homebrew..."
@@ -51,13 +48,10 @@ if [ "$OS" = "Darwin" ]; then
 
     FILTER_DIR="/Library/Printers/Ricoh/Filter"
     PPD_DIR="/Library/Printers/PPDs/Contents/Resources"
-    PPD_FILE="$PPD_DIR/ricoh-sp200.ppd"
-    FILTER_BIN="$FILTER_DIR/rastertoricohjbig"
     CFLAGS="-O2 -Wall -Wextra -I${BREW_PREFIX}/include"
     LIBS="-L${BREW_PREFIX}/lib -lcups -lcupsimage -ljbig"
 
 elif [ -f /etc/debian_version ]; then
-    # Debian / Ubuntu
     require_sudo
     echo "Updating packages and installing build dependencies..."
     sudo apt-get update
@@ -65,86 +59,81 @@ elif [ -f /etc/debian_version ]; then
     
     FILTER_DIR="/usr/lib/cups/filter"
     PPD_DIR="/usr/share/ppd/cupsfilters"
-    PPD_FILE="$PPD_DIR/ricoh-sp200.ppd"
-    FILTER_BIN="$FILTER_DIR/rastertoricohjbig"
     CFLAGS="-O2 -Wall -Wextra"
     LIBS="$(cups-config --libs 2>/dev/null || echo -lcups) -lcupsimage -ljbig"
 
 elif [ -f /etc/fedora-release ] || [ -f /etc/redhat-release ]; then
-    # Fedora / RHEL
     require_sudo
     sudo dnf install -y cups-devel cups-libs jbigkit-devel jbigkit-libs gcc ghostscript
     
     FILTER_DIR="/usr/lib/cups/filter"
     PPD_DIR="/usr/share/ppd/cupsfilters"
-    PPD_FILE="$PPD_DIR/ricoh-sp200.ppd"
-    FILTER_BIN="$FILTER_DIR/rastertoricohjbig"
     CFLAGS="-O2 -Wall -Wextra"
     LIBS="$(cups-config --libs 2>/dev/null || echo -lcups) -lcupsimage -ljbig"
 
 elif [ -f /etc/arch-release ]; then
-    # Arch Linux
     require_sudo
     sudo pacman -S --needed --noconfirm cups ghostscript jbigkit gcc
     
     FILTER_DIR="/usr/lib/cups/filter"
     PPD_DIR="/usr/share/ppd/cupsfilters"
-    PPD_FILE="$PPD_DIR/ricoh-sp200.ppd"
-    FILTER_BIN="$FILTER_DIR/rastertoricohjbig"
     CFLAGS="-O2 -Wall -Wextra"
     LIBS="$(cups-config --libs 2>/dev/null || echo -lcups) -lcupsimage -ljbig"
 else
-    echo "Unsupported or unknown OS. Proceeding with generic Linux paths..."
     FILTER_DIR="/usr/lib/cups/filter"
     PPD_DIR="/usr/share/ppd/cupsfilters"
-    PPD_FILE="$PPD_DIR/ricoh-sp200.ppd"
-    FILTER_BIN="$FILTER_DIR/rastertoricohjbig"
     CFLAGS="-O2 -Wall -Wextra"
     LIBS="$(cups-config --libs 2>/dev/null || echo -lcups) -lcupsimage -ljbig"
 fi
 
 # ------------------------------------------------------------------------------
-# 2. Compile Filter
+# 2. Compile Filters
 # ------------------------------------------------------------------------------
 echo ""
-echo "[2/5] Compiling rastertoricohjbig driver binary..."
+echo "[2/5] Compiling universal driver binaries..."
 cd "$SCRIPT_DIR"
 
+gcc $CFLAGS -o rastertoricohddst rastertoricohddst.c $LIBS
 gcc $CFLAGS -o rastertoricohjbig rastertoricohjbig.c $LIBS
-echo "  ✓ Filter compiled successfully: $SCRIPT_DIR/rastertoricohjbig"
+echo "  ✓ Compiled rastertoricohddst"
+echo "  ✓ Compiled rastertoricohjbig"
 
 # ------------------------------------------------------------------------------
-# 3. Install Filter and PPD
+# 3. Install Filter Binaries and PPD Library
 # ------------------------------------------------------------------------------
 echo ""
-echo "[3/5] Installing driver files to system directories..."
+echo "[3/5] Installing driver binaries and PPD library..."
 require_sudo
 
 sudo mkdir -p "$FILTER_DIR" "$PPD_DIR"
-sudo install -m 755 rastertoricohjbig "$FILTER_BIN"
+sudo install -m 755 rastertoricohddst "$FILTER_DIR/rastertoricohddst"
+sudo install -m 755 rastertoricohjbig "$FILTER_DIR/rastertoricohjbig"
 
 if [ "$OS" = "Darwin" ]; then
-    # Patch PPD with absolute filter path and fix ownership to prevent macOS CUPS sandbox insecure permissions error
-    sed 's|application/vnd.cups-raster 0 .*|application/vnd.cups-raster 0 /Library/Printers/Ricoh/Filter/rastertoricohjbig|' ricoh-sp200.ppd | sudo tee "$PPD_FILE" >/dev/null
+    for ppd in "$SCRIPT_DIR"/ppd/*.ppd "$SCRIPT_DIR"/ricoh-sp200.ppd; do
+        if [ -f "$ppd" ]; then
+            target="$PPD_DIR/$(basename "$ppd")"
+            sed 's|application/vnd.cups-raster 0 rastertoricohddst|application/vnd.cups-raster 0 /Library/Printers/Ricoh/Filter/rastertoricohddst|g; s|application/vnd.cups-raster 0 rastertoricohjbig|application/vnd.cups-raster 0 /Library/Printers/Ricoh/Filter/rastertoricohjbig|g' "$ppd" | sudo tee "$target" >/dev/null
+            sudo chmod 644 "$target"
+        fi
+    done
     sudo chown -R root:wheel /Library/Printers/Ricoh
-    sudo chown root:wheel "$FILTER_BIN" "$PPD_FILE"
-    sudo chmod 755 "$FILTER_BIN"
-    sudo chmod 644 "$PPD_FILE"
-    sudo xattr -d com.apple.quarantine "$FILTER_BIN" 2>/dev/null || true
+    sudo chown root:wheel "$PPD_DIR"/ricoh-sp*.ppd 2>/dev/null || true
+    sudo xattr -d com.apple.quarantine "$FILTER_DIR/rastertoricohddst" "$FILTER_DIR/rastertoricohjbig" 2>/dev/null || true
 else
-    sudo install -m 644 ricoh-sp200.ppd "$PPD_FILE"
+    sudo install -m 644 "$SCRIPT_DIR"/ppd/*.ppd "$PPD_DIR/"
+    sudo install -m 644 "$SCRIPT_DIR"/ricoh-sp200.ppd "$PPD_DIR/"
 fi
 
-echo "  ✓ Filter installed at: $FILTER_BIN"
-echo "  ✓ PPD installed at:    $PPD_FILE"
+echo "  ✓ Filter binaries installed in: $FILTER_DIR"
+echo "  ✓ PPD library installed in:    $PPD_DIR"
 
 # ------------------------------------------------------------------------------
 # 4. Printer Discovery & Registration
 # ------------------------------------------------------------------------------
 echo ""
-echo "[4/5] Detecting connected Ricoh SP 200 printer..."
+echo "[4/5] Detecting connected Ricoh laser printer..."
 
-# Attempt discovery via CUPS backend
 DEVICE_URI=""
 if [ "$OS" = "Darwin" ]; then
     DEVICE_URI=$(/usr/libexec/cups/backend/usb 2>/dev/null | grep -i "ricoh" | awk '{print $2}' | head -1 || true)
@@ -155,28 +144,44 @@ if [ -z "$DEVICE_URI" ]; then
 fi
 
 if [ -z "$DEVICE_URI" ]; then
-    # Fallback to general USB if only one USB printer is attached
     DEVICE_URI=$(lpinfo -v 2>/dev/null | grep -i "usb:" | awk '{print $2}' | head -1 || true)
 fi
 
+SELECTED_PPD="$PPD_DIR/ricoh-sp200.ppd"
+PRINTER_NAME="$DEFAULT_PRINTER_NAME"
+
 if [ -n "$DEVICE_URI" ]; then
     echo "  ✓ Detected printer device URI: $DEVICE_URI"
+    # Match model from URI if present
+    if echo "$DEVICE_URI" | grep -qi "SP%20100\|SP100"; then
+        SELECTED_PPD="$PPD_DIR/ricoh-sp100.ppd"; PRINTER_NAME="Ricoh_SP_100_DDST"
+    elif echo "$DEVICE_URI" | grep -qi "SP%20111\|SP111\|SP112"; then
+        SELECTED_PPD="$PPD_DIR/ricoh-sp111.ppd"; PRINTER_NAME="Ricoh_SP_111_DDST"
+    elif echo "$DEVICE_URI" | grep -qi "SP%20150\|SP150"; then
+        SELECTED_PPD="$PPD_DIR/ricoh-sp150.ppd"; PRINTER_NAME="Ricoh_SP_150_DDST"
+    elif echo "$DEVICE_URI" | grep -qi "SP%20210\|SP210\|SP211\|SP212"; then
+        SELECTED_PPD="$PPD_DIR/ricoh-sp210.ppd"; PRINTER_NAME="Ricoh_SP_210_DDST"
+    elif echo "$DEVICE_URI" | grep -qi "SP%20230\|SP230"; then
+        SELECTED_PPD="$PPD_DIR/ricoh-sp230.ppd"; PRINTER_NAME="Ricoh_SP_230_DDST"
+    elif echo "$DEVICE_URI" | grep -qi "SP%20310\|SP310\|SP311\|SP325\|SP3710"; then
+        SELECTED_PPD="$PPD_DIR/ricoh-sp310.ppd"; PRINTER_NAME="Ricoh_SP_310_DDST"
+    fi
 else
     echo "  ! Note: Printer not detected on USB right now."
     echo "    Using default placeholder URI: usb://RICOH/SP%20200%20DDST"
     DEVICE_URI="usb://RICOH/SP%20200%20DDST"
 fi
 
-echo "Registering printer queue '$PRINTER_NAME'..."
+echo "Registering printer queue '$PRINTER_NAME' with PPD: $(basename "$SELECTED_PPD")..."
 sudo lpadmin -x "$PRINTER_NAME" 2>/dev/null || true
-sudo lpadmin -p "$PRINTER_NAME" -v "$DEVICE_URI" -P "$PPD_FILE" -E
+sudo lpadmin -p "$PRINTER_NAME" -v "$DEVICE_URI" -P "$SELECTED_PPD" -E
 sudo cupsenable "$PRINTER_NAME" 2>/dev/null || true
 sudo cupsaccept "$PRINTER_NAME" 2>/dev/null || true
 
-echo "  ✓ Printer '$PRINTER_NAME' is registered and enabled."
+echo "  ✓ Printer '$PRINTER_NAME' registered and enabled."
 
 # ------------------------------------------------------------------------------
-# 5. Status & Test
+# 5. Status & Completion
 # ------------------------------------------------------------------------------
 echo ""
 echo "[5/5] Checking printer queue status..."
@@ -186,12 +191,13 @@ echo ""
 echo "========================================================"
 echo "  INSTALLATION COMPLETE!"
 echo "========================================================"
-echo "  Printer Name: $PRINTER_NAME"
-echo "  PPD File:     $PPD_FILE"
-echo "  Filter:       $FILTER_BIN"
+echo "  Queue Name:   $PRINTER_NAME"
+echo "  Active PPD:   $SELECTED_PPD"
+echo "  Available PPDs installed in CUPS library:"
+ls -1 "$PPD_DIR"/ricoh-sp*.ppd 2>/dev/null || true
 echo ""
 echo "  To send a test page:"
-echo "    echo 'Hello from Ricoh SP 200' | lpr -P $PRINTER_NAME"
+echo "    echo 'Hello from Ricoh Driver Suite' | lpr -P $PRINTER_NAME"
 echo "  or run:"
 echo "    ./test_print.sh"
 echo "========================================================"
