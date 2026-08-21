@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcups2-dev \
+            libcupsimage2-dev \
+            libjbig-dev \
+            jbigkit-bin \
+            cups-client \
+            cups \
+            ghostscript \
+            gcc
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cups jbigkit ghostscript
+
+      - name: Validate PPD file with cupstestppd
+        run: |
+          cupstestppd -W filters ricoh-sp200.ppd
+
+      - name: Check Shell Scripts Syntax
+        run: |
+          bash -n setup.sh
+          bash -n test_print.sh
+          bash -n uninstall.sh
+
+      - name: Build Driver Binary
+        run: |
+          make clean
+          make CFLAGS="-O2 -Wall -Wextra -Werror" build
+
+      - name: Verify Binary
+        run: |
+          test -f rastertoricohjbig
+          file rastertoricohjbig
