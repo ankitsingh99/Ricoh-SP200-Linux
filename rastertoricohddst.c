@@ -7,7 +7,9 @@
  *   - Ricoh SP 210 / SP 211 / SP 212 / SP 213 / SP 220 / SP 230 series
  *   - Ricoh SP 310 / SP 311 / SP 320 / SP 325 / SP 330 / SP 3710 series
  *
- * Converts CUPS raster stream to Ricoh PJL + JBIG1 bi-level protocol.
+ * Based on the reverse engineering work of Aryan Kushwaha (funinkina) and the
+ * Ricoh DDST protocol analysis of Alexey (madlynx).
+ * Developed and maintained by Ankit Kumar Singh (ankitsingh99) and contributors.
  *
  * SPDX-License-Identifier: MIT
  */

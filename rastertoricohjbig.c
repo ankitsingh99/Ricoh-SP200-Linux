@@ -3,6 +3,9 @@
  *
  * Converts CUPS raster input to the Ricoh SP 200 PJL + JBIG1 bi-level protocol.
  *
+ * Original reverse engineering & implementation by Aryan Kushwaha (funinkina).
+ * Maintained and updated by Ankit Kumar Singh (ankitsingh99) and contributors.
+ *
  * SPDX-License-Identifier: MIT
  */
 
@@ -199,8 +202,6 @@ int main(int argc, char* argv[])
         unsigned bpp = hdr.cupsBitsPerPixel;
         unsigned cspace = hdr.cupsColorSpace;
         unsigned dpi = hdr.HWResolution[0];
-        /* Use cupsBytesPerLine — not a manual calculation — so that the stream
-         * position stays correct across pages regardless of row padding. */
         unsigned stride = hdr.cupsBytesPerLine;
 
         const char* paper = (hdr.PageSize[0] > 610) ? "LETTER" : "A4";
@@ -217,9 +218,6 @@ int main(int argc, char* argv[])
             cupsRasterReadPixels(ras, bmp + y * stride, stride);
         }
 
-        /* The PPD requests 1-bit K raster, so bpp == 1 in normal operation.
-         * This fallback converts 8-bit gray or 24-bit RGB if a different CUPS
-         * pipeline delivers it. */
         unsigned char* bmp1 = bmp;
         if (bpp > 1) {
             unsigned stride1 = (w + 7) / 8;
@@ -236,13 +234,11 @@ int main(int argc, char* argv[])
                     unsigned char px;
                     if (bpp == 8) {
                         px = bmp[y * stride + x];
-                    } else {  /* 24-bit RGB → luminance average */
+                    } else {
                         px = (unsigned char)(((unsigned)bmp[y * stride + x * 3] +
                             bmp[y * stride + x * 3 + 1] +
                             bmp[y * stride + x * 3 + 2]) / 3);
                     }
-                    /* CUPS_CSPACE_K (3): 0 = white, 1 = black.
-                     * All other spaces: 0 = black, 255 = white. */
                     int black = (cspace == 3) ? (px > 128) : (px < 128);
                     if (black) {
                         bmp1[y * stride1 + x / 8] |= (0x80 >> (x & 7));

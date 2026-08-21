@@ -204,9 +204,21 @@ cancel -a
 | [`uninstall.sh`](uninstall.sh) | Clean uninstallation script |
 | [`Makefile`](Makefile) | Multi-platform build and install system |
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Multi-OS GitHub Actions CI pipeline |
+| [`AUTHORS.md`](AUTHORS.md) | Authors, upstream creators, and technical credits |
 | [`LICENSE`](LICENSE) | MIT License |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution & reverse engineering guidelines |
 | [`SECURITY.md`](SECURITY.md) | Security vulnerability disclosure policy |
+
+---
+
+## Credits & Acknowledgements
+
+This project is built upon the collaborative work and reverse-engineering contributions of the open-source community:
+
+- **[Aryan Kushwaha (@funinkina)](https://github.com/funinkina)**: Author of the original Ricoh SP 200 Linux/macOS driver project, initial reverse engineering of USB packet streams (`ricoh_capture.pcap`), and original C filter implementation.
+- **[Alexey (@madlynx)](https://github.com/madlynx)**: Creator of the `ricoh-sp100` project, pioneering open-source DDST protocol research and PJL framing analysis.
+- **[Markus Kuhn](https://www.cl.cam.ac.uk/~mgk25/jbigkit/)**: Author of `jbigkit` (`libjbig`), the open-source ITU-T T.82 JBIG1 bi-level image compression library used to encode the raster streams.
+- **The CUPS & OpenPrinting Teams**: For developing and maintaining the open-source printing standards for macOS and Linux.
 
 ---
 
