@@ -6,8 +6,8 @@ We provide security updates, patches, and fixes for the following versions:
 
 | Version | Supported |
 | ------- | --------- |
-| `main`  | Yes       |
-| < 1.0   | No        |
+| `main` / `0.1.x` | Yes |
+| < 0.1   | No        |
 
 ---
 
