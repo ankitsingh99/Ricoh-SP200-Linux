@@ -9,6 +9,7 @@
 *ModelName: "Ricoh SP 200"
 *ShortNickName: "Ricoh SP 200"
 *NickName: "Ricoh SP 200 DDST"
+*1284DeviceID: "MFG:Ricoh;MDL:SP 200;CMD:DDST;"
 *PSVersion: "(3010.000) 550"
 *LanguageLevel: "3"
 *ColorDevice: False
