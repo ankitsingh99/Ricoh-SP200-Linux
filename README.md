@@ -16,14 +16,14 @@ Consumer and SMB Ricoh DDST/GDI printers lack official Linux and macOS drivers a
 
 | Series Family | Supported Models | PPD Profile | Max Resolution | Duplex / Trays |
 |---|---|---|---|---|
-| **Ricoh SP 100 Series** | SP 100, SP 100SU, SP 100SF | [`ppd/ricoh-sp100.ppd`](ppd/ricoh-sp100.ppd) | 600 DPI | Manual |
-| **Ricoh SP 110 Series** | SP 110, SP 111, SP 112 | [`ppd/ricoh-sp111.ppd`](ppd/ricoh-sp111.ppd) | 1200x600 DPI | Manual |
-| **Ricoh SP 150 Series** | SP 150, SP 150SU, SP 150w | [`ppd/ricoh-sp150.ppd`](ppd/ricoh-sp150.ppd) | 1200x600 DPI | Manual |
+| **Ricoh SP 100 Series** | SP 100, SP 100e, SP 100SU, SP 100SF | [`ppd/ricoh-sp100.ppd`](ppd/ricoh-sp100.ppd) | 600 DPI | Manual |
+| **Ricoh SP 110 Series** | SP 110, SP 111, SP 112 (incl. SU/SF) | [`ppd/ricoh-sp111.ppd`](ppd/ricoh-sp111.ppd) | 1200x600 DPI | Manual |
+| **Ricoh SP 150 Series** | SP 150, SP 150w, SP 150SU, SP 150SUw | [`ppd/ricoh-sp150.ppd`](ppd/ricoh-sp150.ppd) | 1200x600 DPI | Manual |
 | **Ricoh SP 200 Series** | SP 200, SP 201N/NW, SP 202, SP 203, SP 204S/SF | [`ppd/ricoh-sp200.ppd`](ppd/ricoh-sp200.ppd) | 1200x600 DPI | Manual |
-| **Ricoh SP 210 Series** | SP 210, SP 211, SP 212, SP 213w | [`ppd/ricoh-sp210.ppd`](ppd/ricoh-sp210.ppd) | 1200x600 DPI | Manual |
+| **Ricoh SP 210 Series** | SP 210, SP 211, SP 212, SP 213, SP 220 | [`ppd/ricoh-sp210.ppd`](ppd/ricoh-sp210.ppd) | 1200x600 DPI | Manual |
 | **Ricoh SP 230 Series** | SP 230DNw, SP 230SFNw | [`ppd/ricoh-sp230.ppd`](ppd/ricoh-sp230.ppd) | 1200x600 DPI | Auto Duplex |
-| **Ricoh SP 310 / 325 / 3710** | SP 310DN, SP 311DN/SFN, SP 325DNw, SP 3710DN | [`ppd/ricoh-sp310.ppd`](ppd/ricoh-sp310.ppd) | 1200x600 DPI | Auto Duplex + Multi-Tray |
-| **OEM Clones** | Equivalent Gestetner, Lanier, Savin, Nashuatec models | Compatible PPD | Match Base | Match Base |
+| **Ricoh SP 310 / 325 / 3710** | SP 310DN, SP 311DN/SFN, SP 325, SP 3710 | [`ppd/ricoh-sp310.ppd`](ppd/ricoh-sp310.ppd) | 1200x600 DPI | Auto Duplex + Multi-Tray |
+| **OEM Clones** | Equivalent Gestetner, Lanier, Savin, Nashuatec models | Matching PPD | Match Base | Match Base |
 
 ---
 
@@ -34,23 +34,86 @@ Consumer and SMB Ricoh DDST/GDI printers lack official Linux and macOS drivers a
 
 ---
 
-## Quick Start (Automated Installation)
+## Step-by-Step Usage & Configuration Guide
 
-Run the included automated multi-platform installer:
+### Method 1: Automated 1-Step Setup (Recommended)
 
+1. Connect your Ricoh printer via USB and power it ON.
+2. Clone the repository and execute `./setup.sh`:
+   ```bash
+   git clone https://github.com/ankitsingh99/Ricoh-SP200-Linux.git
+   cd Ricoh-SP200-Linux
+   chmod +x setup.sh test_print.sh uninstall.sh
+   ./setup.sh
+   ```
+3. The script will automatically detect your OS, install dependencies, compile the filter, install all PPD profiles, detect your connected Ricoh model, and register the print queue.
+
+---
+
+### Method 2: Manual Step-by-Step Setup for a Specific Model
+
+#### Step 1: Install Driver Binaries & PPD Library
 ```bash
-git clone https://github.com/ankitsingh99/Ricoh-SP200-Linux.git
-cd Ricoh-SP200-Linux
-chmod +x setup.sh test_print.sh uninstall.sh
-./setup.sh
+sudo make install
 ```
 
-The installer will:
-1. Detect your OS and package manager.
-2. Install build and runtime dependencies (`cups`, `jbigkit`, `ghostscript`, `gcc`).
-3. Compile the unified `rastertoricohddst` filter binary with native optimizations.
-4. Install the complete PPD library and configure macOS CUPS sandbox permissions.
-5. Auto-detect the connected Ricoh USB device and register the printer queue.
+#### Step 2: Discover Your Printer's Device URI
+- **USB Discovery (macOS)**:
+  ```bash
+  /usr/libexec/cups/backend/usb | grep -i ricoh
+  ```
+- **USB Discovery (Linux)**:
+  ```bash
+  lpinfo -v | grep -i ricoh
+  ```
+  *(Example output: `direct usb://RICOH/SP%20210%20DDST?serial=ABC123`)*
+
+- **Network / Wi-Fi Printers**:
+  Use standard raw Port 9100 socket:
+  ```text
+  socket://<printer-ip-address>:9100
+  ```
+
+#### Step 3: Select the PPD Profile for Your Model
+
+| Printer Model | macOS Installed PPD Path | Linux Installed PPD Path |
+|---|---|---|
+| **SP 100 / SP 100SU / SP 100SF** | `/Library/Printers/PPDs/Contents/Resources/ricoh-sp100.ppd` | `/usr/share/ppd/cupsfilters/ricoh-sp100.ppd` |
+| **SP 110 / SP 111 / SP 112** | `/Library/Printers/PPDs/Contents/Resources/ricoh-sp111.ppd` | `/usr/share/ppd/cupsfilters/ricoh-sp111.ppd` |
+| **SP 150 / SP 150w / SP 150SU** | `/Library/Printers/PPDs/Contents/Resources/ricoh-sp150.ppd` | `/usr/share/ppd/cupsfilters/ricoh-sp150.ppd` |
+| **SP 200 / SP 201 / SP 204** | `/Library/Printers/PPDs/Contents/Resources/ricoh-sp200.ppd` | `/usr/share/ppd/cupsfilters/ricoh-sp200.ppd` |
+| **SP 210 / SP 212 / SP 213 / SP 220** | `/Library/Printers/PPDs/Contents/Resources/ricoh-sp210.ppd` | `/usr/share/ppd/cupsfilters/ricoh-sp210.ppd` |
+| **SP 230DNw / SP 230SFNw** | `/Library/Printers/PPDs/Contents/Resources/ricoh-sp230.ppd` | `/usr/share/ppd/cupsfilters/ricoh-sp230.ppd` |
+| **SP 310 / SP 311 / SP 325 / SP 3710** | `/Library/Printers/PPDs/Contents/Resources/ricoh-sp310.ppd` | `/usr/share/ppd/cupsfilters/ricoh-sp310.ppd` |
+
+#### Step 4: Register & Enable the Print Queue
+```bash
+# Example for Ricoh SP 210 on macOS:
+QUEUE_NAME="Ricoh_SP_210_DDST"
+DEVICE_URI="usb://RICOH/SP%20210%20DDST"
+PPD_PATH="/Library/Printers/PPDs/Contents/Resources/ricoh-sp210.ppd"
+
+sudo lpadmin -p "$QUEUE_NAME" -v "$DEVICE_URI" -P "$PPD_PATH" -E
+sudo cupsenable "$QUEUE_NAME"
+sudo cupsaccept "$QUEUE_NAME"
+```
+
+#### Step 5: Send a Test Print
+```bash
+echo "Test print from Ricoh Driver" | lpr -P "$QUEUE_NAME"
+```
+
+---
+
+### Method 3: Via the CUPS Web Interface / GUI
+
+Once you run `sudo make install`:
+1. Open your browser: **[http://localhost:631](http://localhost:631)**
+2. Go to **Administration** → **Add Printer**.
+3. Select your detected USB / Network Ricoh printer.
+4. Under **Manufacturer**, select **Ricoh**.
+5. Select your specific model (e.g., *Ricoh SP 111 DDST*, *Ricoh SP 210 DDST*, *Ricoh SP 310 DDST*).
+6. Click **Add Printer** and set default options.
 
 ---
 
@@ -79,23 +142,25 @@ sudo pacman -S --needed cups ghostscript jbigkit gcc
 
 ---
 
-## Manual Build & Installation
+## Troubleshooting Guide
 
+### 1. `File ".../rastertoricohddst" has insecure permissions (0100755/uid=501)`
+- **Cause**: On macOS, CUPS rejects filters located in user directories or Homebrew directories due to sandbox security.
+- **Solution**: Run `sudo make install` or set root ownership:
+  ```bash
+  sudo chown -R root:wheel /Library/Printers/Ricoh
+  sudo chmod 755 /Library/Printers/Ricoh/Filter/rastertoricohddst
+  ```
+
+### 2. Printer status shows `Offline` or Not Responding
+- **Apple Silicon Accessory Prompt**: On macOS Ventura/Sonoma/Sequoia, check for the prompt **"Allow accessory to connect?"** or enable it in **System Settings → Privacy & Security → Allow accessories to connect**.
+- **Check USB Connection**:
+  - macOS: `/usr/libexec/cups/backend/usb`
+  - Linux: `lsusb` and `lpinfo -v | grep -i ricoh`
+
+### 3. Clearing Stuck Jobs
 ```bash
-# Build the universal filter and backward-compatible binary
-make build
-
-# Install filters and all PPD profiles to system directories
-sudo make install
-
-# Register printer queue (with auto USB discovery)
-sudo make register
-
-# Send a test page
-make test
-
-# Uninstall and clean queues
-sudo make uninstall
+cancel -a
 ```
 
 ---
