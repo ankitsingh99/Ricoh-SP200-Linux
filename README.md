@@ -1,12 +1,12 @@
-# Ricoh Universal DDST/GDI CUPS Driver Suite (Linux & macOS)
+# Ricoh Universal DDST/GDI CUPS Driver Suite (macOS and Linux)
 
-[![CI](https://github.com/ankitsingh99/Ricoh-SP200-Linux/actions/workflows/ci.yml/badge.svg)](https://github.com/ankitsingh99/Ricoh-SP200-Linux/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/ankitsingh99/Ricoh-SP200-Linux?color=blue)](https://github.com/ankitsingh99/Ricoh-SP200-Linux/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-blue.svg)](#supported-operating-systems)
-[![CUPS Version](https://img.shields.io/badge/CUPS-2.0%2B-green.svg)](#prerequisites--dependencies)
+[![CI](https://github.com/ankitsingh99/ricoh-universal-ddst-driver/actions/workflows/ci.yml/badge.svg)](https://github.com/ankitsingh99/ricoh-universal-ddst-driver/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ankitsingh99/ricoh-universal-ddst-driver?color=blue)](https://github.com/ankitsingh99/ricoh-universal-ddst-driver/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-blue.svg)](#supported-operating-systems)
+[![CUPS Version](https://img.shields.io/badge/CUPS-2.0%2B-blue.svg)](#prerequisites--dependencies)
 
-A native, high-performance CUPS raster filter and Adobe-compliant PPD driver suite for **Ricoh DDST/GDI monochrome and laser printers** on **Linux** and **macOS** (Apple Silicon M1/M2/M3/M4 & Intel x86_64).
+A native, high-performance CUPS raster filter and Adobe-compliant PPD driver suite for **Ricoh DDST/GDI monochrome and laser printers** on **macOS** (Apple Silicon M1/M2/M3/M4 & Intel x86_64) and **Linux**.
 
 Consumer and SMB Ricoh DDST/GDI printers lack official Linux and macOS drivers and are absent from standard printer stacks (`foo2zjs`, OpenPrinting, Gutenprint, HPLIP). This project provides a direct native C implementation of the PJL + ITU-T T.82 JBIG1 wire protocol reverse-engineered from USB traffic.
 
@@ -29,20 +29,20 @@ Consumer and SMB Ricoh DDST/GDI printers lack official Linux and macOS drivers a
 
 ## Supported Operating Systems
 
-- **Linux**: Debian, Ubuntu, Linux Mint, Raspberry Pi OS (ARM32/ARM64), Fedora, RHEL, AlmaLinux, Arch Linux, Manjaro
 - **macOS**: macOS Sonoma, Ventura, Monterey, Big Sur (Apple Silicon M1/M2/M3/M4 & Intel x86_64)
+- **Linux**: Debian, Ubuntu, Linux Mint, Raspberry Pi OS (ARM32/ARM64), Fedora, RHEL, AlmaLinux, Arch Linux, Manjaro
 
 ---
 
 ## Step-by-Step Usage & Configuration Guide
 
-### Method 1: Automated 1-Step Setup (Recommended)
+### Method 1: Automated Setup
 
 1. Connect your Ricoh printer via USB and power it ON.
 2. Clone the repository and execute `./setup.sh`:
    ```bash
-   git clone https://github.com/ankitsingh99/Ricoh-SP200-Linux.git
-   cd Ricoh-SP200-Linux
+   git clone https://github.com/ankitsingh99/ricoh-universal-ddst-driver.git
+   cd ricoh-universal-ddst-driver
    chmod +x setup.sh test_print.sh uninstall.sh
    ./setup.sh
    ```
@@ -50,7 +50,7 @@ Consumer and SMB Ricoh DDST/GDI printers lack official Linux and macOS drivers a
 
 ---
 
-### Method 2: Manual Step-by-Step Setup for a Specific Model
+### Method 2: Manual Setup for a Specific Model
 
 #### Step 1: Install Driver Binaries & PPD Library
 ```bash
@@ -109,7 +109,7 @@ echo "Test print from Ricoh Driver" | lpr -P "$QUEUE_NAME"
 
 Once you run `sudo make install`:
 1. Open your browser: **[http://localhost:631](http://localhost:631)**
-2. Go to **Administration** → **Add Printer**.
+2. Go to **Administration** -> **Add Printer**.
 3. Select your detected USB / Network Ricoh printer.
 4. Under **Manufacturer**, select **Ricoh**.
 5. Select your specific model (e.g., *Ricoh SP 111 DDST*, *Ricoh SP 210 DDST*, *Ricoh SP 310 DDST*).
@@ -144,7 +144,7 @@ sudo pacman -S --needed cups ghostscript jbigkit gcc
 
 ## Troubleshooting Guide
 
-### 1. `File ".../rastertoricohddst" has insecure permissions (0100755/uid=501)`
+### 1. File ".../rastertoricohddst" has insecure permissions (0100755/uid=501)
 - **Cause**: On macOS, CUPS rejects filters located in user directories or Homebrew directories due to sandbox security.
 - **Solution**: Run `sudo make install` or set root ownership:
   ```bash
@@ -152,8 +152,8 @@ sudo pacman -S --needed cups ghostscript jbigkit gcc
   sudo chmod 755 /Library/Printers/Ricoh/Filter/rastertoricohddst
   ```
 
-### 2. Printer status shows `Offline` or Not Responding
-- **Apple Silicon Accessory Prompt**: On macOS Ventura/Sonoma/Sequoia, check for the prompt **"Allow accessory to connect?"** or enable it in **System Settings → Privacy & Security → Allow accessories to connect**.
+### 2. Printer status shows Offline or Not Responding
+- **Apple Silicon Accessory Prompt**: On macOS Ventura/Sonoma/Sequoia, check for the prompt **"Allow accessory to connect?"** or enable it in **System Settings -> Privacy & Security -> Allow accessories to connect**.
 - **Check USB Connection**:
   - macOS: `/usr/libexec/cups/backend/usb`
   - Linux: `lsusb` and `lpinfo -v | grep -i ricoh`
@@ -168,26 +168,26 @@ cancel -a
 ## Architecture & Technical Protocol
 
 ```
-                  ┌───────────────────────────────────────────────────────────┐
-                  │                 CUPS Print Framework                      │
-                  │        (Input: application/vnd.cups-raster)                │
-                  └─────────────────────────────┬─────────────────────────────┘
-                                                │
-                                                ▼
-                  ┌───────────────────────────────────────────────────────────┐
-                  │          rastertoricohddst (Native C Filter)              │
-                  ├───────────────────────────────────────────────────────────┤
-                  │ 1. Model Profile & PPD parser (Tray, Duplex, Resolution)  │
-                  │ 2. Color Conversion Engine (1-bit Monochrome)             │
-                  │ 3. ITU-T T.82 JBIG1 Compression via libjbig               │
-                  │ 4. PJL Stream Builder & Dynamic Dot Counter               │
-                  └─────────────────────────────┬─────────────────────────────┘
-                                                │
-                                                ▼
-                  ┌───────────────────────────────────────────────────────────┐
-                  │          USB / Network (IPP / AppSocket) Backend          │
-                  │                   Ricoh Laser Printer                     │
-                  └───────────────────────────────────────────────────────────┘
+                  +-----------------------------------------------------------+
+                  |                 CUPS Print Framework                      |
+                  |        (Input: application/vnd.cups-raster)                |
+                  +-----------------------------+-----------------------------+
+                                                |
+                                                v
+                  +-----------------------------------------------------------+
+                  |          rastertoricohddst (Native C Filter)              |
+                  +-----------------------------------------------------------+
+                  | 1. Model Profile & PPD parser (Tray, Duplex, Resolution)  |
+                  | 2. Color Conversion Engine (1-bit Monochrome)             |
+                  | 3. ITU-T T.82 JBIG1 Compression via libjbig               |
+                  | 4. PJL Stream Builder & Dynamic Dot Counter               |
+                  +-----------------------------+-----------------------------+
+                                                |
+                                                v
+                  +-----------------------------------------------------------+
+                  |          USB / Network (IPP / AppSocket) Backend          |
+                  |                   Ricoh Laser Printer                     |
+                  +-----------------------------------------------------------+
 ```
 
 ---
@@ -212,7 +212,7 @@ cancel -a
 
 ## Contributing
 
-We welcome reports on new printer models, packet captures, and pull requests! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
+We welcome reports on new printer models, packet captures, and pull requests. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
 
 ---
 

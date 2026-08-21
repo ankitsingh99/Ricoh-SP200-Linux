@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# Ricoh SP 200 - Test Print Script
+# Ricoh DDST Driver Suite - Test Print Script
 # ==============================================================================
 
 set -euo pipefail
@@ -15,20 +15,20 @@ echo "Sending single test print page to '$PRINTER_NAME'..."
 
 {
   echo "=================================================="
-  echo "         Ricoh SP 200 Series Test Print           "
+  echo "      Ricoh Universal DDST Driver Test Page       "
   echo "=================================================="
   echo ""
   echo "  Timestamp : $(date)"
   echo "  Platform  : $(uname -s) ($(uname -m))"
   echo "  Printer   : $PRINTER_NAME"
-  echo "  Driver    : Native JBIG1 CUPS Filter"
+  echo "  Driver    : Native Universal DDST CUPS Filter"
   echo ""
-  echo "  If you can read this, your Ricoh SP 200 driver"
-  echo "  is functioning properly on your system!"
+  echo "  If you can read this, your Ricoh DDST driver"
+  echo "  is functioning properly on your system."
   echo ""
   echo "=================================================="
 } | lpr -P "$PRINTER_NAME"
 
-echo "✓ Print job submitted. Checking queue..."
+echo "[OK] Print job submitted. Checking queue..."
 sleep 1
 lpstat -o "$PRINTER_NAME" 2>/dev/null || lpstat -o 2>/dev/null || true

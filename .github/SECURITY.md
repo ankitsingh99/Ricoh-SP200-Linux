@@ -4,10 +4,10 @@
 
 We provide security updates, patches, and fixes for the following versions:
 
-| Version | Supported          |
-| ------- | ------------------ |
-| `main`  | :white_check_mark: |
-| < 1.0   | :x:                |
+| Version | Supported |
+| ------- | --------- |
+| `main`  | Yes       |
+| < 1.0   | No        |
 
 ---
 
@@ -19,8 +19,8 @@ If you discover a security vulnerability:
 
 1. **Do not open a public issue.**
 2. Please report the issue privately via:
-   - **GitHub Security Advisories**: [Report a vulnerability](https://github.com/ankitsingh99/Ricoh-SP200-Linux/security/advisories/new)
-   - **Email**: Send details directly to `Mail.ankitks@gmail.com` with the subject `[SECURITY] Ricoh SP 200 Driver Vulnerability`.
+   - **GitHub Security Advisories**: [Report a vulnerability](https://github.com/ankitsingh99/ricoh-universal-ddst-driver/security/advisories/new)
+   - **Email**: Send details directly to `Mail.ankitks@gmail.com` with the subject `[SECURITY] Ricoh DDST Driver Vulnerability`.
 
 ### What to Include in Your Report
 

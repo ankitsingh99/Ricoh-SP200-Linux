@@ -2,7 +2,7 @@
 # ==============================================================================
 # Ricoh Universal DDST/GDI CUPS Driver Suite - Automated Installer
 # Supports: Ricoh SP 100, SP 110, SP 150, SP 200, SP 210, SP 230, SP 310 Series
-# Platforms: Linux (Debian, Ubuntu, Fedora, Arch) & macOS (Apple Silicon/Intel)
+# Platforms: macOS (Apple Silicon & Intel) and Linux (Debian/Ubuntu/Fedora/Arch)
 # ==============================================================================
 
 set -euo pipefail
@@ -42,7 +42,7 @@ if [ "$OS" = "Darwin" ]; then
             echo "Installing $pkg via Homebrew..."
             brew install "$pkg"
         else
-            echo "  ✓ $pkg is installed"
+            echo "  [OK] $pkg is installed"
         fi
     done
 
@@ -95,8 +95,8 @@ cd "$SCRIPT_DIR"
 
 gcc $CFLAGS -o rastertoricohddst rastertoricohddst.c $LIBS
 gcc $CFLAGS -o rastertoricohjbig rastertoricohjbig.c $LIBS
-echo "  ✓ Compiled rastertoricohddst"
-echo "  ✓ Compiled rastertoricohjbig"
+echo "  [OK] Compiled rastertoricohddst"
+echo "  [OK] Compiled rastertoricohjbig"
 
 # ------------------------------------------------------------------------------
 # 3. Install Filter Binaries and PPD Library
@@ -125,8 +125,8 @@ else
     sudo install -m 644 "$SCRIPT_DIR"/ricoh-sp200.ppd "$PPD_DIR/"
 fi
 
-echo "  ✓ Filter binaries installed in: $FILTER_DIR"
-echo "  ✓ PPD library installed in:    $PPD_DIR"
+echo "  [OK] Filter binaries installed in: $FILTER_DIR"
+echo "  [OK] PPD library installed in:    $PPD_DIR"
 
 # ------------------------------------------------------------------------------
 # 4. Printer Discovery & Registration
@@ -151,8 +151,7 @@ SELECTED_PPD="$PPD_DIR/ricoh-sp200.ppd"
 PRINTER_NAME="$DEFAULT_PRINTER_NAME"
 
 if [ -n "$DEVICE_URI" ]; then
-    echo "  ✓ Detected printer device URI: $DEVICE_URI"
-    # Match model from URI if present
+    echo "  [OK] Detected printer device URI: $DEVICE_URI"
     if echo "$DEVICE_URI" | grep -qi "SP%20100\|SP100"; then
         SELECTED_PPD="$PPD_DIR/ricoh-sp100.ppd"; PRINTER_NAME="Ricoh_SP_100_DDST"
     elif echo "$DEVICE_URI" | grep -qi "SP%20111\|SP111\|SP112"; then
@@ -167,8 +166,8 @@ if [ -n "$DEVICE_URI" ]; then
         SELECTED_PPD="$PPD_DIR/ricoh-sp310.ppd"; PRINTER_NAME="Ricoh_SP_310_DDST"
     fi
 else
-    echo "  ! Note: Printer not detected on USB right now."
-    echo "    Using default placeholder URI: usb://RICOH/SP%20200%20DDST"
+    echo "  [*] Note: Printer not detected on USB right now."
+    echo "      Using default placeholder URI: usb://RICOH/SP%20200%20DDST"
     DEVICE_URI="usb://RICOH/SP%20200%20DDST"
 fi
 
@@ -178,7 +177,7 @@ sudo lpadmin -p "$PRINTER_NAME" -v "$DEVICE_URI" -P "$SELECTED_PPD" -E
 sudo cupsenable "$PRINTER_NAME" 2>/dev/null || true
 sudo cupsaccept "$PRINTER_NAME" 2>/dev/null || true
 
-echo "  ✓ Printer '$PRINTER_NAME' registered and enabled."
+echo "  [OK] Printer '$PRINTER_NAME' registered and enabled."
 
 # ------------------------------------------------------------------------------
 # 5. Status & Completion
@@ -189,7 +188,7 @@ lpstat -p "$PRINTER_NAME" -l 2>/dev/null || true
 
 echo ""
 echo "========================================================"
-echo "  INSTALLATION COMPLETE!"
+echo "  INSTALLATION COMPLETE"
 echo "========================================================"
 echo "  Queue Name:   $PRINTER_NAME"
 echo "  Active PPD:   $SELECTED_PPD"
